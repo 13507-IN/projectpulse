@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/context/auth-context';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { RainbowButton } from '@/components/magicui/rainbow-button';
 import {
@@ -258,6 +259,41 @@ const KanbanColumn = ({
 export default function ProjectWorkspacePage() {
   const teamAvatars = ['avatar1', 'avatar2', 'avatar3', 'avatar4'];
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [syncing, setSyncing] = useState(false);
+  const { user } = useAuth();
+
+  const handleSyncWithGitHub = async () => {
+    if (!user) {
+      alert('Please log in with GitHub to sync repositories');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      // For this demo, we'll sync with the projectpulse-main repository
+      // In a real app, you'd get the repo info from the project data
+      const response = await fetch(`http://localhost:4000/api/github/sync/${user.login}/projectpulse-main`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ ${data.message}`);
+      } else {
+        const error = await response.json();
+        alert(`❌ Sync failed: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      alert('❌ Failed to sync with GitHub. Please try again.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleAddTask = (column: ColumnName) => (
     newTask: Omit<Task, 'id' | 'column'>
@@ -303,9 +339,9 @@ export default function ProjectWorkspacePage() {
               );
             })}
           </div>
-          <RainbowButton>
+          <RainbowButton onClick={handleSyncWithGitHub} disabled={syncing}>
             <Github className="mr-2 h-4 w-4" />
-            Sync with GitHub
+            {syncing ? 'Syncing...' : 'Sync with GitHub'}
           </RainbowButton>
         </div>
       </header>
