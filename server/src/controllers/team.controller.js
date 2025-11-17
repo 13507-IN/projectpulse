@@ -1,21 +1,31 @@
 import prisma from '../config/prisma.js';
-import { calculateMatchScore, generateUserEmbedding } from '../services/pinecone.service.js';
+import { 
+  calculateMatchScore, 
+  generateUserEmbedding, 
+  findSimilarUsers 
+} from '../services/pinecone.service.js';
 
 // Get AI-matched teammates
 export const getMatchedTeammates = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { skills, interests, availability, limit = 20 } = req.query;
+    const { skills, interests, availability, limit = 12 } = req.query;
 
-    // Get current user
+    // Get current user with necessary fields
     const currentUser = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
+        name: true,
+        email: true,
         skills: true,
         interests: true,
         availability: true,
         experience: true,
+        githubUsername: true,
+        avatarUrl: true,
+        bio: true,
+        role: true,
         embedding: true,
       },
     });
@@ -24,24 +34,57 @@ export const getMatchedTeammates = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Build where clause for filtering
+    try {
+      // Try AI-powered matching first
+      const similarUsers = await findSimilarUsers(userId, parseInt(limit));
+      
+      if (similarUsers && similarUsers.length > 0) {
+        // Get full user details for matched users
+        const matchedUserIds = similarUsers.map(u => u.id);
+        const users = await prisma.user.findMany({
+          where: { 
+            id: { in: matchedUserIds },
+            // Apply additional filters if provided
+            ...(skills && { skills: { hasSome: skills.split(',') } }),
+            ...(interests && { interests: { hasSome: interests.split(',') } }),
+            ...(availability && { availability }),
+          },
+          select: {
+            id: true,
+            name: true,
+            githubUsername: true,
+        avatarUrl: true,
+        role: true,
+        skills: true,
+        interests: true,
+        availability: true,
+        experience: true,
+        bio: true,
+        embedding: true,
+      },
+      take: parseInt(limit) * 2, // Get more for filtering
+    });
+
+          // Map to final format with match scores
+          const matchedTeammates = users.map(user => ({
+            ...user,
+            matchScore: similarUsers.find(u => u.id === user.id)?.score || 0
+          })).sort((a, b) => b.matchScore - a.matchScore);
+
+          return res.json(matchedTeammates);
+        }
+      } catch (aiError) {
+      console.warn('AI matching failed, falling back to rule-based matching:', aiError);
+    }
+
+    // Fallback to rule-based matching if AI matching fails
     const where = {
       id: { not: userId },
+      ...(skills && { skills: { hasSome: skills.split(',') } }),
+      ...(interests && { interests: { hasSome: interests.split(',') } }),
+      ...(availability && { availability }),
     };
 
-    if (skills) {
-      where.skills = { hasSome: skills.split(',') };
-    }
-
-    if (interests) {
-      where.interests = { hasSome: interests.split(',') };
-    }
-
-    if (availability) {
-      where.availability = availability;
-    }
-
-    // Fetch potential matches
     const users = await prisma.user.findMany({
       where,
       select: {
@@ -55,32 +98,23 @@ export const getMatchedTeammates = async (req, res) => {
         availability: true,
         experience: true,
         bio: true,
-        embedding: true,
       },
-      take: parseInt(limit) * 2, // Get more for filtering
+      take: parseInt(limit),
     });
 
-    // Calculate match scores for each user
-    const matchesWithScores = await Promise.all(
-      users.map(async (user) => {
-        const score = await calculateMatchScore(currentUser, user);
-        return {
-          ...user,
-          matchScore: Math.round(score),
-          embedding: undefined, // Don't send embeddings to client
-        };
-      })
-    );
+    // Calculate match scores using rule-based approach
+    const matchedTeammates = users.map(user => ({
+      ...user,
+      matchScore: calculateMatchScore(currentUser, user)
+    })).sort((a, b) => b.matchScore - a.matchScore);
 
-    // Sort by match score and take top results
-    const topMatches = matchesWithScores
-      .sort((a, b) => b.matchScore - a.matchScore)
-      .slice(0, parseInt(limit));
-
-    res.json(topMatches);
+    res.json(matchedTeammates);
   } catch (error) {
-    console.error('Error fetching matched teammates:', error);
-    res.status(500).json({ error: 'Failed to fetch matched teammates' });
+    console.error('Error in getMatchedTeammates:', error);
+    res.status(500).json({ 
+      error: 'Failed to get matched teammates',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 

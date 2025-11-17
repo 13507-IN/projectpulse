@@ -74,52 +74,98 @@ const sessionConfig = {
     rolling: true
 };
 
-// Use Redis for session store in production
-if (process.env.REDIS_URL) {
-    const redisClient = createClient({
-        url: process.env.REDIS_URL
-    });
-    redisClient.connect().catch(console.error);
-    
-    sessionConfig.store = new RedisStore({
+// Use Redis for session store in production, fallback to memory in development
+const setupSessionStore = async () => {
+  if (process.env.NODE_ENV === 'production' && process.env.REDIS_URL) {
+    try {
+      const redisClient = createClient({
+        url: process.env.REDIS_URL,
+        socket: {
+          reconnectStrategy: (retries) => {
+            if (retries > 3) {
+              console.error('Failed to connect to Redis after multiple attempts');
+              return new Error('Redis connection failed');
+            }
+            return Math.min(retries * 100, 5000);
+          }
+        }
+      });
+
+      redisClient.on('error', (err) => 
+        console.error('Redis Client Error:', err.message)
+      );
+
+      await redisClient.connect();
+      
+      sessionConfig.store = new RedisStore({
         client: redisClient,
         prefix: 'sess:',
         ttl: 86400 // 24 hours
-    });
-}
+      });
+      
+      console.log('✅ Connected to Redis for session storage');
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to connect to Redis, using in-memory session store:', error.message);
+      return false;
+    }
+  } else {
+    console.log('ℹ️ Using in-memory session store for development');
+    return true;
+  }
+};
 
-app.use(session(sessionConfig));
-
-// Log session info for debugging
-app.use((req, res, next) => {
+// Initialize session store before starting the server
+const initServer = async () => {
+  await setupSessionStore();
+  
+  // Session middleware
+  app.use(session(sessionConfig));
+  
+  // Log session info for debugging
+  app.use((req, res, next) => {
     console.log('Session ID:', req.sessionID);
-    console.log('Session data:', req.session);
+    // Don't log full session in production for security
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Session data:', req.session);
+    }
     next();
-});
+  });
 
-// Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/users", userRoutes);
-app.use("/api/projects", projectRoutes);
-app.use("/api/tasks", taskRoutes);
-app.use("/api/team", teamRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/activities", activityRoutes);
-app.use("/api/github", authenticateToken, githubRoutes);
+  // API Routes
+  app.use("/api/auth", authRoutes);
+  app.use("/api/users", userRoutes);
+  app.use("/api/projects", projectRoutes);
+  app.use("/api/tasks", taskRoutes);
+  app.use("/api/team", teamRoutes);
+  app.use("/api/notifications", notificationRoutes);
+  app.use("/api/activities", activityRoutes);
+  app.use("/api/github", authenticateToken, githubRoutes);
 
-// Legacy tasks route (for backward compatibility with VS Code extension)
-app.use("/api/tasks", authenticateToken, tasksRoutes);
-
-// Health check endpoint
-app.get("/api/health", (req, res) => {
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
     res.json({ 
-        status: "OK", 
-        timestamp: new Date().toISOString(),
-        session: req.sessionID ? 'active' : 'none'
+      status: "OK", 
+      timestamp: new Date().toISOString(),
+      session: req.sessionID ? 'active' : 'none',
+      environment: process.env.NODE_ENV || 'development'
     });
-});
+  });
+  
+  // Start the server
+  const PORT = process.env.PORT || 4000;
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`CORS allowed origins:`, [
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ]);
+  });
+};
 
-// Error handling middleware
+// Error handling middleware - must be after all other middleware and routes
 app.use((err, req, res, next) => {
     console.error('Error:', err.stack);
     res.status(500).json({
@@ -128,13 +174,8 @@ app.use((err, req, res, next) => {
     });
 });
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-    const allowedOrigins = [
-        process.env.FRONTEND_URL || 'http://localhost:3000',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000'
-    ];
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`CORS allowed origins:`, allowedOrigins);
+// Start the server
+initServer().catch(error => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
 });

@@ -1,17 +1,43 @@
 
 "use client";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { IconBrandGithub, IconBrandGoogle } from "@tabler/icons-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 export default function LoginPage() {
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const error = searchParams?.get('error');
+  const success = searchParams?.get('success');
+
+  useEffect(() => {
+    if (error) {
+      toast.error(error === 'access_denied' ? 'GitHub login was cancelled' : 'Failed to login with GitHub');
+      // Remove error from URL
+      router.replace('/login');
+    }
+    if (success) {
+      toast.success('Successfully logged in with GitHub');
+      router.replace('/dashboard');
+    }
+  }, [error, success, router]);
+
+  const handleGitHubLogin = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    // Get the base URL from environment variable or fallback to localhost
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    window.location.href = `${apiUrl}/api/auth/github`;
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Redirect to GitHub OAuth for authentication
-    window.location.href = "http://localhost:4000/api/auth/github";
+    // Handle regular form submission if needed
   };
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
@@ -50,18 +76,18 @@ export default function LoginPage() {
           <div className="bg-gradient-to-r from-transparent via-neutral-300 dark:via-neutral-700 to-transparent my-8 h-[1px] w-full" />
 
           <div className="flex flex-col space-y-4">
-            <a href="http://localhost:4000/api/auth/github">
-              <button
-                className=" relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)]"
-                type="button"
-              >
-                <IconBrandGithub className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
-                <span className="text-neutral-700 dark:text-neutral-300 text-sm">
-                  Sign In with GitHub
-                </span>
-                <BottomGradient />
-              </button>
-            </a>
+            <button
+              onClick={handleGitHubLogin}
+              disabled={isLoading}
+              className="relative group/btn flex space-x-2 items-center justify-center px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)] disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+            >
+              <IconBrandGithub className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''} text-neutral-800 dark:text-neutral-300`} />
+              <span className="text-neutral-700 dark:text-neutral-300 text-sm">
+                {isLoading ? 'Signing in...' : 'Sign In with GitHub'}
+              </span>
+              <BottomGradient />
+            </button>
             <button
               className=" relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)]"
               type="submit"
