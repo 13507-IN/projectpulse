@@ -50,20 +50,49 @@ export default function ProfilePage() {
     
     setReposLoading(true);
     try {
-      const response = await fetch('http://localhost:4000/api/github/repos', {
+      const response = await fetch('http://localhost:4000/api/github/repositories', {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
-      if (response.ok) {
-        const data = await response.json();
-        // Filter to show only the most recent and active repositories
-        const activeRepos = data.repos
-          .filter((repo: GitHubRepo) => !repo.fork && repo.updated_at) // Exclude forks and repos without recent activity
-          .sort((a: GitHubRepo, b: GitHubRepo) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-          .slice(0, 6); // Show top 6 most recent repos
-        setRepos(activeRepos);
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.log('Authentication required, trying to refresh...');
+          // Try to refresh the session
+          const refreshResponse = await fetch('http://localhost:4000/api/auth/refresh', {
+            method: 'POST',
+            credentials: 'include'
+          });
+          
+          if (refreshResponse.ok) {
+            // Retry the original request
+            return fetchRepos();
+          } else {
+            throw new Error('Session expired. Please log in again.');
+          }
+        }
+        throw new Error(`Failed to fetch repositories: ${response.statusText}`);
       }
+      
+      const data = await response.json();
+      
+      // Handle both array and object response formats
+      const repos = Array.isArray(data) ? data : (data.repositories || data.repos || []);
+      
+      // Filter and sort repositories
+      const activeRepos = repos
+        .filter((repo: GitHubRepo) => !repo.fork && repo.updated_at) // Exclude forks and repos without recent activity
+        .sort((a: GitHubRepo, b: GitHubRepo) => 
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )
+        .slice(0, 6); // Show top 6 most recent repos
+        
+      setRepos(activeRepos);
     } catch (error) {
-      console.error('Failed to fetch repos:', error);
+      console.error('Failed to fetch repositories:', error);
+      // You might want to show an error message to the user here
     } finally {
       setReposLoading(false);
     }

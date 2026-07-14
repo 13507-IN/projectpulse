@@ -1,0 +1,138 @@
+{
+  "name": "projectpulse",
+  "displayName": "ProjectPulse",
+  "description": "Task management and GitHub integration for collaborative coding",
+  "version": "0.0.1",
+  "publisher": "projectpulse",
+  "engines": {
+    "vscode": "^1.106.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "task management",
+    "github",
+    "collaboration",
+    "project management"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "projectpulse.login",
+        "title": "Login with GitHub",
+        "category": "ProjectPulse"
+      },
+      {
+        "command": "projectpulse.logout",
+        "title": "Logout",
+        "category": "ProjectPulse"
+      },
+      {
+        "command": "projectpulse.refreshTasks",
+        "title": "Refresh Tasks",
+        "category": "ProjectPulse",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "projectpulse.createTask",
+        "title": "Create New Task",
+        "category": "ProjectPulse",
+        "icon": "$(add)"
+      },
+      {
+        "command": "projectpulse.syncGitHub",
+        "title": "Sync with GitHub Issues",
+        "category": "ProjectPulse",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "projectpulse.openTask",
+        "title": "Open Task Details",
+        "category": "ProjectPulse"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "projectpulse",
+          "title": "ProjectPulse",
+          "icon": "$(pulse)"
+        }
+      ]
+    },
+    "views": {
+      "projectpulse": [
+        {
+          "id": "projectpulseTasks",
+          "name": "Tasks",
+          "when": "projectpulse.authenticated",
+          "icon": "$(checklist)"
+        },
+        {
+          "id": "projectpulseAuth",
+          "name": "Authentication", 
+          "when": "!projectpulse.authenticated",
+          "icon": "$(account)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "projectpulse.refreshTasks",
+          "when": "view == projectpulseTasks",
+          "group": "navigation"
+        },
+        {
+          "command": "projectpulse.createTask",
+          "when": "view == projectpulseTasks",
+          "group": "navigation"
+        },
+        {
+          "command": "projectpulse.syncGitHub",
+          "when": "view == projectpulseTasks",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "projectpulse.openTask",
+          "when": "view == projectpulseTasks && viewItem == task"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "build": "esbuild src/extension.ts --bundle --platform=node --outfile=dist/extension.js --external:vscode",
+    "prepackage": "npm run build",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.106.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.46.3",
+    "eslint": "^9.39.1",
+    "esbuild": "^0.27.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}

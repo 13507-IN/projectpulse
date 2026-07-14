@@ -3,6 +3,26 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/auth-context';
+
+interface Repository {
+  id: number;
+  name: string;
+  full_name: string;
+  html_url: string;
+  description: string | null;
+  language: string | null;
+  updated_at: string;
+  owner: {
+    login: string;
+    avatar_url: string;
+    html_url: string;
+  };
+  private: boolean;
+  fork: boolean;
+  stargazers_count: number;
+  forks_count: number;
+  open_issues_count: number;
+}
 import { RainbowButton } from '@/components/magicui/rainbow-button';
 import {
   Card,
@@ -44,7 +64,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 export default function Dashboard() {
   const [open, setOpen] = useState(false);
-  const [repos, setRepos] = useState([]);
+  const [repos, setRepos] = useState<Repository[]>([]);
   const { user, loading, checkAuth, logout } = useAuth();
 
   useEffect(() => {
@@ -59,15 +79,31 @@ export default function Dashboard() {
 
   const fetchRepos = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/github/repos', {
+      const response = await fetch('http://localhost:4000/api/github/repositories', {
+        method: 'GET',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
-      if (response.ok) {
-        const data = await response.json();
-        setRepos(data.repos);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // If unauthorized, try to refresh the auth
+          await checkAuth();
+          // Retry the request
+          await fetchRepos();
+          return;
+        }
+        const errorText = await response.text();
+        console.error('Failed to fetch repos:', errorText);
+        return;
       }
+
+      const data: Repository[] = await response.json();
+      setRepos(data);
     } catch (error) {
-      console.error('Failed to fetch repos:', error);
+      console.error('Failed to fetch repositories:', error);
     }
   };
 
@@ -76,6 +112,20 @@ export default function Dashboard() {
       fetchRepos();
     }
   }, [user]);
+
+  const handleCloneInVSCode = (repo: Repository) => {
+    // Try to open in VS Code directly
+    const vsCodeUrl = `vscode://vscode.git/clone?url=${encodeURIComponent(repo.html_url)}`;
+    window.location.href = vsCodeUrl;
+    
+    // Fallback to clipboard with instructions
+    navigator.clipboard.writeText(repo.html_url).then(() => {
+      // Show a toast or notification that the URL was copied
+      console.log('Repository URL copied to clipboard');
+    }).catch(err => {
+      console.error('Failed to copy to clipboard:', err);
+    });
+  };
 
   if (loading) {
     return (
@@ -235,60 +285,119 @@ export default function Dashboard() {
           <div>
             <Card>
               <CardHeader>
-                <CardTitle>GitHub Repositories</CardTitle>
-                <CardDescription>
-                  Your connected GitHub repositories for project sync.
-                </CardDescription>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle>Your Repositories</CardTitle>
+                    <CardDescription>
+                      Your GitHub repositories are listed below
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={fetchRepos}
+                    className="flex items-center gap-2"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="lucide lucide-refresh-ccw"
+                    >
+                      <path d="M21 2v6h-6" />
+                      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                      <path d="M3 22v-6h6" />
+                      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                    </svg>
+                    Refresh
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Repository</TableHead>
-                      <TableHead>Visibility</TableHead>
-                      <TableHead>Language</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {repos.slice(0, 5).map((repo: any) => (
-                      <TableRow key={repo.id}>
-                        <TableCell>
-                          <div className="font-medium">{repo.name}</div>
-                          <div className="text-sm text-muted-foreground">{repo.description}</div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={repo.private ? "secondary" : "outline"}>
-                            {repo.private ? "Private" : "Public"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{repo.language || "N/A"}</TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={async () => {
-                              try {
-                                const response = await fetch(`http://localhost:4000/api/github/sync/${repo.owner.login}/${repo.name}`, {
-                                  method: 'POST',
-                                  credentials: 'include',
-                                });
-                                if (response.ok) {
-                                  alert(`Repository ${repo.name} synced successfully!`);
-                                }
-                              } catch (error) {
-                                console.error('Sync failed:', error);
-                                alert('Sync failed. Please try again.');
-                              }
-                            }}
-                          >
-                            Sync
-                          </Button>
-                        </TableCell>
+                {repos.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No repositories found. Try refreshing or check your GitHub connection.</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Language</TableHead>
+                        <TableHead>Last Updated</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {repos.map((repo) => (
+                        <TableRow key={repo.id}>
+                          <TableCell className="font-medium">
+                            <a
+                              href={repo.html_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline flex items-center"
+                            >
+                              {repo.name}
+                              <ArrowUpRight className="ml-1 h-4 w-4" />
+                            </a>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-500 line-clamp-1">
+                            {repo.description || 'No description'}
+                          </TableCell>
+                          <TableCell>
+                            {repo.language ? (
+                              <Badge variant="outline">
+                                {repo.language}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(repo.updated_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="text-right space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleCloneInVSCode(repo)}
+                              className="flex items-center gap-1"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="lucide lucide-git-branch-plus"
+                              >
+                                <path d="M6 3v12" />
+                                <path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+                                <path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+                                <path d="M15 6a9 9 0 0 0-9 9" />
+                                <path d="M18 15v6" />
+                                <path d="M21 18h-6" />
+                              </svg>
+                              Clone
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
               <CardFooter>
                 <div className="text-xs text-muted-foreground">
