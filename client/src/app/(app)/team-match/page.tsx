@@ -84,14 +84,20 @@ export default function TeamMatchPage() {
         limit: '12'
       }).toString();
 
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache',
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
       const response = await fetch(`${backendUrl}/api/team?${queryParams}`, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache',
-        }
+        headers
       });
 
       if (response.status === 401) {

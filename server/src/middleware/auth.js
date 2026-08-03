@@ -1,10 +1,10 @@
 import { getGitHubUser } from "../utils/github.js";
 import prisma from '../config/prisma.js';
 
-// Session-based authentication middleware
+// Session and Token based authentication middleware with multi-layer fallback
 export const authenticateToken = async (req, res, next) => {
     try {
-        // Check for user session with database lookup
+        // 1. Session check
         if (req.session && req.session.userId) {
             const user = await prisma.user.findUnique({
                 where: { id: req.session.userId },
@@ -15,6 +15,9 @@ export const authenticateToken = async (req, res, next) => {
                     githubUsername: true,
                     githubAccessToken: true,
                     avatarUrl: true,
+                    role: true,
+                    skills: true,
+                    interests: true,
                 },
             });
 
@@ -25,23 +28,54 @@ export const authenticateToken = async (req, res, next) => {
             }
         }
 
-        // Fallback to token-based auth
+        // 2. Token extraction from Bearer header, cookies, or query params
         const authHeader = req.headers.authorization;
         let token = null;
 
         if (authHeader && authHeader.startsWith('Bearer ')) {
             token = authHeader.substring(7);
         } else if (req.cookies && (req.cookies.token || req.cookies.github_token)) {
-            // Fallback to cookie-based auth
             token = req.cookies.token || req.cookies.github_token;
+        } else if (req.query && req.query.token) {
+            token = req.query.token;
+        }
+
+        // 3. Fallback: Lookup user from non-httpOnly user cookie if token is missing
+        if (!token && req.cookies && req.cookies.user) {
+            try {
+                const cookieUserData = JSON.parse(req.cookies.user);
+                if (cookieUserData && cookieUserData.id) {
+                    const dbUser = await prisma.user.findUnique({
+                        where: { id: cookieUserData.id }
+                    });
+                    if (dbUser) {
+                        if (req.session) req.session.userId = dbUser.id;
+                        req.user = dbUser;
+                        req.token = dbUser.githubAccessToken;
+                        return next();
+                    }
+                }
+            } catch (e) {}
         }
 
         if (!token) {
-            console.log('No authentication token found');
+            console.log('No authentication token found in request');
             return res.status(401).json({ error: "Authentication required. Please log in again." });
         }
 
-        // Verify token by fetching user info from GitHub
+        // 4. Fast DB lookup for user matching this token
+        let dbUser = await prisma.user.findFirst({
+            where: { githubAccessToken: token }
+        });
+
+        if (dbUser) {
+            if (req.session) req.session.userId = dbUser.id;
+            req.user = dbUser;
+            req.token = token;
+            return next();
+        }
+
+        // 5. Fallback: Verify token with GitHub API if not found in local DB
         const user = await getGitHubUser(token);
         
         if (!user) {
@@ -52,14 +86,8 @@ export const authenticateToken = async (req, res, next) => {
             });
         }
 
-        // Store user and token in session for subsequent requests
-        if (req.session) {
-            req.session.user = user;
-            req.session.token = token;
-        }
-
-        // Find or create user in database
-        let dbUser = await prisma.user.upsert({
+        // Upsert user in DB
+        dbUser = await prisma.user.upsert({
             where: { githubId: String(user.id) },
             update: {
                 githubAccessToken: token,
@@ -76,12 +104,10 @@ export const authenticateToken = async (req, res, next) => {
             },
         });
 
-        // Store in session
         if (req.session) {
             req.session.userId = dbUser.id;
         }
 
-        // Attach to request
         req.user = dbUser;
         req.token = token;
         next();
