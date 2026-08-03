@@ -404,7 +404,7 @@ export default function TeamMatchPage() {
           isOpen={verificationModalOpen}
           onClose={() => setVerificationModalOpen(false)}
           targetUser={selectedPartner}
-          currentUserId={user.id}
+          currentUserId={String(user.id)}
           onVerificationComplete={fetchMatchedTeammates}
         />
       )}
