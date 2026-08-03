@@ -151,7 +151,7 @@ const GridDistortion: React.FC<GridDistortionProps> = ({
     const animate = () => {
       animationId = requestAnimationFrame(animate);
       
-      const data = dataTexture.image.data as Float32Array;
+      const data = dataTexture.image.data as unknown as Float32Array;
       for (let i = 0; i < size * size; i++) {
         data[i * 4] *= settings.relaxation;
         data[i * 4 + 1] *= settings.relaxation;

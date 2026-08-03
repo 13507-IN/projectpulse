@@ -1,6 +1,6 @@
 
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -10,14 +10,56 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 
 export default function SignupPage() {
-  const { login } = useAuth();
+  const { login, checkAuth } = useAuth();
   const router = useRouter();
+  const [formData, setFormData] = useState({
+    firstname: '',
+    lastname: '',
+    email: '',
+    password: '',
+  });
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    login({ name: "New User" });
-    router.push("/dashboard");
+    if (!formData.email || !formData.password) {
+      alert("Email and password are required");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/users/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          firstName: formData.firstname,
+          lastName: formData.lastname,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(errorData.error || 'Registration failed');
+        return;
+      }
+
+      await checkAuth();
+      router.push("/dashboard");
+    } catch (error) {
+      console.error('Registration failed:', error);
+      alert('Failed to register. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-1/4 left-0 w-96 h-96 bg-red-500/20 rounded-full filter blur-3xl opacity-50 -z-10 animate-pulse"></div>
@@ -38,27 +80,52 @@ export default function SignupPage() {
           <div className="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2 mb-4">
             <LabelInputContainer>
               <Label htmlFor="firstname">First name</Label>
-              <Input id="firstname" placeholder="Tyler" type="text" />
+              <Input 
+                id="firstname" 
+                placeholder="Tyler" 
+                type="text" 
+                value={formData.firstname}
+                onChange={(e) => setFormData({ ...formData, firstname: e.target.value })}
+              />
             </LabelInputContainer>
             <LabelInputContainer>
               <Label htmlFor="lastname">Last name</Label>
-              <Input id="lastname" placeholder="Durden" type="text" />
+              <Input 
+                id="lastname" 
+                placeholder="Durden" 
+                type="text" 
+                value={formData.lastname}
+                onChange={(e) => setFormData({ ...formData, lastname: e.target.value })}
+              />
             </LabelInputContainer>
           </div>
           <LabelInputContainer className="mb-4">
             <Label htmlFor="email">Email Address</Label>
-            <Input id="email" placeholder="projectmayhem@fc.com" type="email" />
+            <Input 
+              id="email" 
+              placeholder="projectmayhem@fc.com" 
+              type="email" 
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            />
           </LabelInputContainer>
           <LabelInputContainer className="mb-4">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" placeholder="••••••••" type="password" />
+            <Input 
+              id="password" 
+              placeholder="••••••••" 
+              type="password" 
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            />
           </LabelInputContainer>
 
           <button
-            className="bg-gradient-to-br relative group/btn from-black dark:from-zinc-900 dark:to-zinc-900 to-neutral-600 block dark:bg-zinc-800 w-full text-white rounded-md h-10 font-medium shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:shadow-[0px_1px_0px_0px_var(--zinc-800)_inset,0px_-1px_0px_0px_var(--zinc-800)_inset]"
+            className="bg-gradient-to-br relative group/btn from-black dark:from-zinc-900 dark:to-zinc-900 to-neutral-600 block dark:bg-zinc-800 w-full text-white rounded-md h-10 font-medium shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:shadow-[0px_1px_0px_0px_var(--zinc-800)_inset,0px_-1px_0px_0px_var(--zinc-800)_inset] disabled:opacity-50"
             type="submit"
+            disabled={loading}
           >
-            Sign up &rarr;
+            {loading ? "Signing up..." : "Sign up"} &rarr;
             <BottomGradient />
           </button>
 
@@ -66,8 +133,9 @@ export default function SignupPage() {
 
           <div className="flex flex-col space-y-4">
             <button
+              onClick={() => login()}
               className=" relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)]"
-              type="submit"
+              type="button"
             >
               <IconBrandGithub className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
               <span className="text-neutral-700 dark:text-neutral-300 text-sm">
@@ -77,7 +145,7 @@ export default function SignupPage() {
             </button>
             <button
               className=" relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)]"
-              type="submit"
+              type="button"
             >
               <IconBrandGoogle className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
               <span className="text-neutral-700 dark:text-neutral-300 text-sm">
