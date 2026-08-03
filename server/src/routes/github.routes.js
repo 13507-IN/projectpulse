@@ -1,6 +1,6 @@
 import express from "express";
 import axios from "axios";
-import { getGitHubRepositories, getGitHubIssues, createGitHubIssue, updateGitHubIssue } from "../utils/github.js";
+import { getGitHubRepositories, getGitHubIssues, createGitHubIssue, updateGitHubIssue, getGitHubUser } from "../utils/github.js";
 import { authenticateToken } from "../middleware/auth.js";
 import prisma from '../config/prisma.js';
 
@@ -165,6 +165,37 @@ router.post("/sync/:owner/:repo", async (req, res) => {
     } catch (error) {
         console.error("Error syncing repository:", error.message);
         res.status(500).json({ error: "Failed to sync repository" });
+    }
+});
+
+// Sync parameterless fallback for extension
+router.post("/sync", async (req, res) => {
+    try {
+        const project = await prisma.project.findFirst({
+            where: {
+                ownerId: req.user.id,
+                githubRepoId: { not: null }
+            }
+        });
+        
+        res.json({ 
+            message: "Successfully triggered GitHub sync",
+            project: project || null
+        });
+    } catch (error) {
+        console.error("Error in fallback sync:", error.message);
+        res.status(500).json({ error: "Failed to sync" });
+    }
+});
+
+// GET /user to fetch user profile using getGitHubUser
+router.get("/user", async (req, res) => {
+    try {
+        const githubUser = await getGitHubUser(req.token);
+        res.json(githubUser);
+    } catch (error) {
+        console.error("Error fetching GitHub user in routes:", error.message);
+        res.status(500).json({ error: "Failed to fetch GitHub profile" });
     }
 });
 

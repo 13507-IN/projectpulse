@@ -16,6 +16,7 @@ const router = express.Router();
 // All routes require authentication
 router.use(requireAuth);
 
+router.get('/', getUserTasks); // Support extension fetching all tasks
 router.get('/user', getUserTasks);
 router.get('/project/:projectId', getProjectTasks);
 router.get('/:id', getTask);

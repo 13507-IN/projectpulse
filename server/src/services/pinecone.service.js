@@ -71,76 +71,136 @@ export const generateUserEmbedding = async (user) => {
   }
 };
 
-// Calculate match score between two users
-export const calculateMatchScore = async (user1, user2) => {
-  try {
-    // Try vector similarity if embeddings are available
-    if (user1.embedding?.length > 0 && user2.embedding?.length > 0) {
-      const vectorScore = cosineSimilarity(user1.embedding, user2.embedding);
-      return vectorScore * 100;
-    }
-
-    // Fallback to rule-based matching
-    return calculateRuleBasedScore(user1, user2);
-  } catch (error) {
-    console.error('Error calculating match score:', error);
-    return calculateRuleBasedScore(user1, user2);
-  }
+// Role Synergy Complementarity Mapping
+const ROLE_SYNERGY_MAP = {
+  'frontend': ['backend', 'ui-ux', 'fullstack', 'mobile-dev', 'developer'],
+  'backend': ['frontend', 'devops', 'fullstack', 'data-scientist', 'developer'],
+  'fullstack': ['frontend', 'backend', 'ui-ux', 'devops', 'ai-engineer', 'developer'],
+  'ui-ux': ['frontend', 'fullstack', 'product-manager', 'developer'],
+  'ai-engineer': ['data-scientist', 'backend', 'fullstack', 'developer'],
+  'data-scientist': ['ai-engineer', 'backend', 'fullstack', 'developer'],
+  'devops': ['backend', 'fullstack', 'ai-engineer', 'developer'],
+  'mobile-dev': ['backend', 'ui-ux', 'fullstack', 'developer'],
+  'product-manager': ['ui-ux', 'fullstack', 'frontend', 'developer'],
+  'developer': ['frontend', 'backend', 'fullstack', 'ui-ux', 'ai-engineer']
 };
 
-// Rule-based matching (fallback)
-const calculateRuleBasedScore = (user1, user2) => {
-  let score = 0;
-  let maxScore = 0;
+// Comprehensive Multi-Factor Partner Matching Calculation
+export const calculateMatchDetails = (user1, user2) => {
+  let roleSynergyScore = 70;
+  let skillScore = 0;
+  let interestScore = 0;
+  let availabilityScore = 50;
+  let experienceScore = 50;
+  const highlights = [];
 
-  // Skills matching (40% weight)
-  maxScore += 40;
-  if (user1.skills?.length && user2.skills?.length) {
-    const commonSkills = user1.skills.filter(skill => 
-      user2.skills.includes(skill)
-    );
-    score += (commonSkills.length / Math.max(user1.skills.length, user2.skills.length)) * 40;
+  // 1. Role Synergy (25% weight)
+  const r1 = (user1.role || 'developer').toLowerCase();
+  const r2 = (user2.role || 'developer').toLowerCase();
+  if (r1 === r2) {
+    roleSynergyScore = 80;
+    highlights.push(`Peer role match: Both ${user1.role || 'Developer'}`);
+  } else if (ROLE_SYNERGY_MAP[r1]?.includes(r2) || ROLE_SYNERGY_MAP[r2]?.includes(r1)) {
+    roleSynergyScore = 98;
+    highlights.push(`High Role Synergy: ${user1.role || 'Developer'} & ${user2.role || 'Developer'}`);
+  } else {
+    roleSynergyScore = 75;
   }
 
-  // Interests matching (30% weight)
-  maxScore += 30;
-  if (user1.interests?.length && user2.interests?.length) {
-    const commonInterests = user1.interests.filter(interest => 
-      user2.interests.includes(interest)
-    );
-    score += (commonInterests.length / Math.max(user1.interests.length, user2.interests.length)) * 30;
+  // 2. Skill Complementarity & Overlap (35% weight)
+  const skills1 = (user1.skills || []).map(s => s.toLowerCase());
+  const skills2 = (user2.skills || []).map(s => s.toLowerCase());
+
+  if (skills1.length && skills2.length) {
+    const commonSkills = skills1.filter(s => skills2.includes(s));
+    const uniqueSkills2 = skills2.filter(s => !skills1.includes(s));
+
+    const overlapRatio = commonSkills.length / Math.max(skills1.length, skills2.length);
+    const complementaryBonus = uniqueSkills2.length > 0 ? 0.25 : 0;
+    skillScore = Math.min(100, Math.round((overlapRatio * 0.6 + complementaryBonus + (commonSkills.length > 0 ? 0.35 : 0)) * 100));
+
+    if (commonSkills.length > 0) {
+      highlights.push(`Shared Tech: ${commonSkills.slice(0, 3).join(', ').toUpperCase()}`);
+    }
+    if (uniqueSkills2.length > 0) {
+      highlights.push(`Complementary Skill: Adds ${uniqueSkills2.slice(0, 2).join(', ').toUpperCase()}`);
+    }
+  } else {
+    skillScore = 55;
   }
 
-  // Availability matching (15% weight)
-  maxScore += 15;
+  // 3. Interests Alignment (20% weight)
+  const int1 = (user1.interests || []).map(i => i.toLowerCase());
+  const int2 = (user2.interests || []).map(i => i.toLowerCase());
+  if (int1.length && int2.length) {
+    const commonInt = int1.filter(i => int2.includes(i));
+    interestScore = Math.min(100, Math.round((commonInt.length / Math.max(int1.length, int2.length)) * 100));
+    if (commonInt.length > 0) {
+      highlights.push(`Shared Interests: ${commonInt.slice(0, 2).join(', ')}`);
+    }
+  } else {
+    interestScore = 50;
+  }
+
+  // 4. Availability & Experience (20% weight)
   if (user1.availability && user2.availability) {
     if (user1.availability === user2.availability) {
-      score += 15;
+      availabilityScore = 100;
+      highlights.push(`Matching Availability: ${user1.availability}`);
     } else if (user1.availability === 'flexible' || user2.availability === 'flexible') {
-      score += 10;
+      availabilityScore = 80;
+    } else {
+      availabilityScore = 40;
     }
   }
 
-  // Experience level complementarity (15% weight)
-  maxScore += 15;
   if (user1.experience && user2.experience) {
     const levels = ['junior', 'mid', 'senior'];
-    const diff = Math.abs(
-      levels.indexOf(user1.experience) - levels.indexOf(user2.experience)
-    );
-    // Prefer some experience difference for mentorship
+    const diff = Math.abs(levels.indexOf(user1.experience) - levels.indexOf(user2.experience));
     if (diff === 1) {
-      score += 15;
+      experienceScore = 95;
+      highlights.push(`Great Mentorship / Peer pairing (${user1.experience} & ${user2.experience})`);
     } else if (diff === 0) {
-      score += 10;
+      experienceScore = 85;
     } else {
-      score += 5;
+      experienceScore = 60;
     }
   }
 
-  // Normalize score to 0-100
-  return maxScore > 0 ? Math.min(100, (score / maxScore) * 100) : 50;
+  // Overall Score Calculation
+  const totalScore = Math.round(
+    (roleSynergyScore * 0.25) +
+    (skillScore * 0.35) +
+    (interestScore * 0.20) +
+    (((availabilityScore + experienceScore) / 2) * 0.20)
+  );
+
+  const finalScore = Math.min(99, Math.max(50, totalScore));
+
+  return {
+    score: finalScore,
+    factors: {
+      roleSynergy: roleSynergyScore,
+      skillScore,
+      interestScore,
+      availabilityScore,
+      experienceScore
+    },
+    highlights: highlights.slice(0, 4)
+  };
 };
+
+// Calculate match score between two users
+export const calculateMatchScore = (user1, user2) => {
+  try {
+    const details = calculateMatchDetails(user1, user2);
+    return details.score;
+  } catch (error) {
+    console.error('Error calculating match score:', error);
+    return 65;
+  }
+};
+
 
 // Simple embedding generation (fallback)
 const createSimpleEmbedding = (text, dimensions = 128) => {
@@ -227,5 +287,6 @@ export default {
   initPinecone,
   generateUserEmbedding,
   calculateMatchScore,
+  calculateMatchDetails,
   findSimilarUsers,
 };
