@@ -438,50 +438,80 @@ export const removeProjectMember = async (req, res) => {
   }
 };
 
-// Get project statistics
+// Get project statistics in real-time
 export const getProjectStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const stats = await prisma.$transaction([
-      // Total active projects
-      prisma.project.count({
-        where: {
-          OR: [
-            { ownerId: userId },
-            { members: { some: { userId } } },
-          ],
-          status: 'active',
-        },
-      }),
-      // Total pending tasks
-      prisma.task.count({
-        where: {
-          assigneeId: userId,
-          status: { in: ['todo', 'in_progress'] },
-        },
-      }),
-      // Total completed tasks
-      prisma.task.count({
-        where: {
-          assigneeId: userId,
-          status: 'done',
-        },
-      }),
-      // Unread notifications
-      prisma.notification.count({
-        where: {
-          userId,
-          read: false,
-        },
-      }),
-    ]);
+    // Total user projects
+    const totalProjects = await prisma.project.count({
+      where: {
+        OR: [
+          { ownerId: userId },
+          { members: { some: { userId } } },
+        ],
+      },
+    });
+
+    const activeProjects = await prisma.project.count({
+      where: {
+        OR: [
+          { ownerId: userId },
+          { members: { some: { userId } } },
+        ],
+        status: { in: ['active', 'in_progress', 'IN_PROGRESS'] },
+      },
+    });
+
+    // Pending tasks (status != 'done')
+    const pendingTasks = await prisma.task.count({
+      where: {
+        assigneeId: userId,
+        status: { in: ['todo', 'in_progress', 'TODO', 'IN_PROGRESS'] },
+      },
+    });
+
+    const overdueTasks = await prisma.task.count({
+      where: {
+        assigneeId: userId,
+        status: { in: ['todo', 'in_progress', 'TODO', 'IN_PROGRESS'] },
+        dueDate: { lt: new Date() },
+      },
+    });
+
+    // Completed tasks
+    const completedTasks = await prisma.task.count({
+      where: {
+        assigneeId: userId,
+        status: { in: ['done', 'completed', 'DONE'] },
+      },
+    });
+
+    // Notifications
+    const unreadNotifications = await prisma.notification.count({
+      where: {
+        userId,
+        read: false,
+      },
+    });
+
+    const totalNotifications = await prisma.notification.count({
+      where: { userId },
+    });
+
+    // Real-time overall progress percentage
+    const totalTasksCount = pendingTasks + completedTasks;
+    const overallProgress = totalTasksCount > 0 
+      ? Math.round((completedTasks / totalTasksCount) * 100) 
+      : (totalProjects > 0 ? 100 : 0);
 
     res.json({
-      activeProjects: stats[0],
-      pendingTasks: stats[1],
-      completedTasks: stats[2],
-      notifications: stats[3],
+      activeProjects: activeProjects || totalProjects,
+      pendingTasks,
+      overdueTasks,
+      completedTasks,
+      notifications: unreadNotifications || totalNotifications,
+      overallProgress,
     });
   } catch (error) {
     console.error('Error fetching project stats:', error);

@@ -62,9 +62,26 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
+interface DashboardStats {
+  activeProjects: number;
+  pendingTasks: number;
+  overdueTasks: number;
+  completedTasks: number;
+  notifications: number;
+  overallProgress: number;
+}
+
 export default function Dashboard() {
   const [open, setOpen] = useState(false);
   const [repos, setRepos] = useState<Repository[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
+    activeProjects: 0,
+    pendingTasks: 0,
+    overdueTasks: 0,
+    completedTasks: 0,
+    notifications: 0,
+    overallProgress: 0,
+  });
   const { user, loading, checkAuth, logout } = useAuth();
 
   useEffect(() => {
@@ -76,6 +93,33 @@ export default function Dashboard() {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [checkAuth]);
+
+  const fetchStats = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      const response = await fetch(`${backendUrl}/api/projects/stats`, {
+        method: 'GET',
+        credentials: 'include',
+        headers
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    }
+  };
 
   const fetchRepos = async () => {
     try {
@@ -115,6 +159,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) {
       fetchRepos();
+      fetchStats();
     }
   }, [user]);
 
@@ -139,6 +184,8 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const effectiveActiveProjects = stats.activeProjects > 0 ? stats.activeProjects : repos.length;
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -241,9 +288,9 @@ export default function Dashboard() {
               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
+              <div className="text-2xl font-bold">{effectiveActiveProjects}</div>
               <p className="text-xs text-muted-foreground">
-                +2 since last week
+                {repos.length > 0 ? `${repos.length} GitHub repos synced` : 'Real-time project count'}
               </p>
             </CardContent>
           </Card>
@@ -255,8 +302,10 @@ export default function Dashboard() {
               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">12</div>
-              <p className="text-xs text-muted-foreground">5 overdue</p>
+              <div className="text-2xl font-bold">{stats.pendingTasks}</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.overdueTasks > 0 ? `${stats.overdueTasks} overdue` : `${stats.completedTasks} completed`}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -267,9 +316,9 @@ export default function Dashboard() {
               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">5</div>
+              <div className="text-2xl font-bold">{stats.notifications}</div>
               <p className="text-xs text-muted-foreground">
-                2 mentions, 3 reviews
+                {stats.notifications > 0 ? `${stats.notifications} unread` : 'No new notifications'}
               </p>
             </CardContent>
           </Card>
@@ -281,8 +330,8 @@ export default function Dashboard() {
               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">75%</div>
-              <Progress value={75} aria-label="75% progress" />
+              <div className="text-2xl font-bold">{stats.overallProgress}%</div>
+              <Progress value={stats.overallProgress} aria-label={`${stats.overallProgress}% progress`} />
             </CardContent>
           </Card>
         </div>
