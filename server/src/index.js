@@ -15,6 +15,7 @@ import taskRoutes from "./routes/task.routes.js";
 import teamRoutes from "./routes/team.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import activityRoutes from "./routes/activity.routes.js";
+import githubWebhookRoutes from "./routes/github-webhook.routes.js";
 import { authenticateToken } from './middleware/auth.js';
 import { initPinecone } from './services/pinecone.service.js';
 
@@ -52,7 +53,11 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser(process.env.SESSION_SECRET || 'your-secret-key'));
 
@@ -133,6 +138,7 @@ const initServer = async () => {
   });
 
   // API Routes
+  app.use("/api/github/webhooks", githubWebhookRoutes);
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/projects", projectRoutes);
@@ -152,6 +158,15 @@ const initServer = async () => {
     });
   });
   
+  // Error handling middleware - must be after all other middleware and routes
+  app.use((err, req, res, next) => {
+      console.error('Error:', err.stack);
+      res.status(500).json({
+          error: 'Internal Server Error',
+          message: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+  });
+  
   // Start the server
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
@@ -164,15 +179,6 @@ const initServer = async () => {
     ]);
   });
 };
-
-// Error handling middleware - must be after all other middleware and routes
-app.use((err, req, res, next) => {
-    console.error('Error:', err.stack);
-    res.status(500).json({
-        error: 'Internal Server Error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-});
 
 // Start the server
 initServer().catch(error => {

@@ -171,14 +171,41 @@ export const createTask = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!projectId || !title) {
-      return res.status(400).json({ error: 'Project ID and title are required' });
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    let targetProjectId = projectId;
+    if (!targetProjectId) {
+      // Find the user's first available project
+      const userProject = await prisma.project.findFirst({
+        where: {
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId } } },
+          ],
+        },
+      });
+
+      if (userProject) {
+        targetProjectId = userProject.id;
+      } else {
+        // Create a default Sandbox project for them
+        const defaultProject = await prisma.project.create({
+          data: {
+            name: 'My Sandbox Project',
+            description: 'Default project created automatically for personal tasks.',
+            ownerId: userId,
+          },
+        });
+        targetProjectId = defaultProject.id;
+      }
     }
 
     // Verify user has access to the project
     const project = await prisma.project.findFirst({
       where: {
-        id: projectId,
+        id: targetProjectId,
         OR: [
           { ownerId: userId },
           { members: { some: { userId } } },
@@ -192,7 +219,7 @@ export const createTask = async (req, res) => {
 
     const task = await prisma.task.create({
       data: {
-        projectId,
+        projectId: targetProjectId,
         title,
         description,
         status: status || 'todo',
@@ -219,7 +246,7 @@ export const createTask = async (req, res) => {
       data: {
         type: 'task_created',
         description: `Created task "${title}"`,
-        projectId,
+        projectId: targetProjectId,
         taskId: task.id,
         userId,
       },
@@ -232,7 +259,7 @@ export const createTask = async (req, res) => {
           type: 'task_assigned',
           title: 'New Task Assigned',
           message: `You have been assigned to task "${title}"`,
-          link: `/project/${projectId}`,
+          link: `/project/${targetProjectId}`,
           userId: assigneeId,
         },
       });

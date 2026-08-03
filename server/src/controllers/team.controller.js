@@ -1,6 +1,7 @@
 import prisma from '../config/prisma.js';
 import { 
   calculateMatchScore, 
+  calculateMatchDetails,
   generateUserEmbedding, 
   findSimilarUsers 
 } from '../services/pinecone.service.js';
@@ -9,7 +10,7 @@ import {
 export const getMatchedTeammates = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { skills, interests, availability, limit = 12 } = req.query;
+    const { skills, interests, availability, role, experience, minScore, limit = 12 } = req.query;
 
     // Get current user with necessary fields
     const currentUser = await prisma.user.findUnique({
@@ -34,58 +35,17 @@ export const getMatchedTeammates = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    try {
-      // Try AI-powered matching first
-      const similarUsers = await findSimilarUsers(userId, parseInt(limit));
-      
-      if (similarUsers && similarUsers.length > 0) {
-        // Get full user details for matched users
-        const matchedUserIds = similarUsers.map(u => u.id);
-        const users = await prisma.user.findMany({
-          where: { 
-            id: { in: matchedUserIds },
-            // Apply additional filters if provided
-            ...(skills && { skills: { hasSome: skills.split(',') } }),
-            ...(interests && { interests: { hasSome: interests.split(',') } }),
-            ...(availability && { availability }),
-          },
-          select: {
-            id: true,
-            name: true,
-            githubUsername: true,
-        avatarUrl: true,
-        role: true,
-        skills: true,
-        interests: true,
-        availability: true,
-        experience: true,
-        bio: true,
-        embedding: true,
-      },
-      take: parseInt(limit) * 2, // Get more for filtering
-    });
-
-          // Map to final format with match scores
-          const matchedTeammates = users.map(user => ({
-            ...user,
-            matchScore: similarUsers.find(u => u.id === user.id)?.score || 0
-          })).sort((a, b) => b.matchScore - a.matchScore);
-
-          return res.json(matchedTeammates);
-        }
-      } catch (aiError) {
-      console.warn('AI matching failed, falling back to rule-based matching:', aiError);
-    }
-
-    // Fallback to rule-based matching if AI matching fails
+    // Query candidate users excluding self
     const where = {
       id: { not: userId },
       ...(skills && { skills: { hasSome: skills.split(',') } }),
       ...(interests && { interests: { hasSome: interests.split(',') } }),
       ...(availability && { availability }),
+      ...(role && { role }),
+      ...(experience && { experience }),
     };
 
-    const users = await prisma.user.findMany({
+    const candidateUsers = await prisma.user.findMany({
       where,
       select: {
         id: true,
@@ -98,17 +58,58 @@ export const getMatchedTeammates = async (req, res) => {
         availability: true,
         experience: true,
         bio: true,
+        embedding: true,
       },
-      take: parseInt(limit),
+      take: parseInt(limit) * 2,
     });
 
-    // Calculate match scores using rule-based approach
-    const matchedTeammates = users.map(user => ({
-      ...user,
-      matchScore: calculateMatchScore(currentUser, user)
-    })).sort((a, b) => b.matchScore - a.matchScore);
+    // Fetch existing verifications involving current user
+    const verifications = await prisma.partnerVerification.findMany({
+      where: {
+        OR: [
+          { user1Id: userId },
+          { user2Id: userId },
+        ],
+      },
+    });
 
-    res.json(matchedTeammates);
+    // Map candidate users with rich match calculations and verification status
+    let matchedTeammates = candidateUsers.map(user => {
+      const matchDetails = calculateMatchDetails(currentUser, user);
+      
+      // Find verification record with this user if exists
+      const verif = verifications.find(v => 
+        (v.user1Id === userId && v.user2Id === user.id) ||
+        (v.user2Id === userId && v.user1Id === user.id)
+      );
+
+      return {
+        ...user,
+        matchScore: matchDetails.score,
+        matchFactors: matchDetails.factors,
+        highlights: matchDetails.highlights,
+        verification: verif ? {
+          id: verif.id,
+          overallStatus: verif.overallStatus,
+          user1Id: verif.user1Id,
+          user2Id: verif.user2Id,
+          u1Status: verif.u1Status,
+          u2Status: verif.u2Status,
+        } : null,
+      };
+    });
+
+    // Apply minimum score filter if requested
+    if (minScore) {
+      const scoreCutoff = parseInt(minScore);
+      matchedTeammates = matchedTeammates.filter(t => t.matchScore >= scoreCutoff);
+    }
+
+    // Sort by match score descending and apply limit
+    matchedTeammates.sort((a, b) => b.matchScore - a.matchScore);
+    const result = matchedTeammates.slice(0, parseInt(limit));
+
+    res.json(result);
   } catch (error) {
     console.error('Error in getMatchedTeammates:', error);
     res.status(500).json({ 
@@ -117,6 +118,7 @@ export const getMatchedTeammates = async (req, res) => {
     });
   }
 };
+
 
 // Send team invitation
 export const sendTeamInvite = async (req, res) => {
@@ -398,3 +400,269 @@ export const updateMatchingProfile = async (req, res) => {
     res.status(500).json({ error: 'Failed to update matching profile' });
   }
 };
+
+// --- SKILLSET VERIFICATION CONTROLLERS ---
+
+// Initiate or fetch existing skillset verification with a partner
+export const initiateVerification = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { targetUserId } = req.body;
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: 'targetUserId is required' });
+    }
+
+    if (userId === targetUserId) {
+      return res.status(400).json({ error: 'Cannot verify skills with yourself' });
+    }
+
+    // Check if target user exists
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, name: true, skills: true, role: true }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target partner not found' });
+    }
+
+    // Find existing verification or create new one
+    let verification = await prisma.partnerVerification.findFirst({
+      where: {
+        OR: [
+          { user1Id: userId, user2Id: targetUserId },
+          { user1Id: targetUserId, user2Id: userId }
+        ]
+      },
+      include: {
+        user1: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, skills: true, role: true } },
+        user2: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, skills: true, role: true } }
+      }
+    });
+
+    if (!verification) {
+      verification = await prisma.partnerVerification.create({
+        data: {
+          user1Id: userId,
+          user2Id: targetUserId,
+          overallStatus: 'in_progress'
+        },
+        include: {
+          user1: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, skills: true, role: true } },
+          user2: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, skills: true, role: true } }
+        }
+      });
+    }
+
+    res.json(verification);
+  } catch (error) {
+    console.error('Error initiating verification:', error);
+    res.status(500).json({ error: 'Failed to initiate skillset verification' });
+  }
+};
+
+// Set 1-2 verification questions for partner
+export const setVerificationQuestions = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { questions } = req.body; // Array of 1-2 questions: [{ id, text, skill }]
+
+    if (!questions || !Array.isArray(questions) || questions.length === 0 || questions.length > 2) {
+      return res.status(400).json({ error: 'Provide 1 or 2 verification questions' });
+    }
+
+    const verification = await prisma.partnerVerification.findUnique({
+      where: { id }
+    });
+
+    if (!verification) {
+      return res.status(404).json({ error: 'Verification session not found' });
+    }
+
+    const isUser1 = verification.user1Id === userId;
+    const isUser2 = verification.user2Id === userId;
+
+    if (!isUser1 && !isUser2) {
+      return res.status(403).json({ error: 'Unauthorized to modify this verification' });
+    }
+
+    const updatedData = isUser1 
+      ? { u1Questions: questions, u1Status: 'questions_set' } 
+      : { u2Questions: questions, u2Status: 'questions_set' };
+
+    const updatedVerification = await prisma.partnerVerification.update({
+      where: { id },
+      data: updatedData,
+      include: {
+        user1: { select: { id: true, name: true, avatarUrl: true, skills: true, role: true } },
+        user2: { select: { id: true, name: true, avatarUrl: true, skills: true, role: true } }
+      }
+    });
+
+    const recipientId = isUser1 ? verification.user2Id : verification.user1Id;
+    await prisma.notification.create({
+      data: {
+        type: 'verification_questions',
+        title: 'Skillset Verification Questions Received',
+        message: `${req.user.name} set ${questions.length} verification question(s) for you to answer!`,
+        link: `/team-match?verificationId=${id}`,
+        userId: recipientId
+      }
+    });
+
+    res.json(updatedVerification);
+  } catch (error) {
+    console.error('Error setting verification questions:', error);
+    res.status(500).json({ error: 'Failed to set verification questions' });
+  }
+};
+
+// Submit answers to partner's questions
+export const submitVerificationAnswers = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { answers } = req.body; // Array of answer objects: [{ questionId, answer }]
+
+    const verification = await prisma.partnerVerification.findUnique({
+      where: { id }
+    });
+
+    if (!verification) {
+      return res.status(404).json({ error: 'Verification session not found' });
+    }
+
+    const isUser1 = verification.user1Id === userId;
+    const isUser2 = verification.user2Id === userId;
+
+    if (!isUser1 && !isUser2) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const updatedData = isUser1 
+      ? { u2Answers: answers, u2Status: 'answered' }
+      : { u1Answers: answers, u1Status: 'answered' };
+
+    const updatedVerification = await prisma.partnerVerification.update({
+      where: { id },
+      data: updatedData,
+      include: {
+        user1: { select: { id: true, name: true, avatarUrl: true, skills: true, role: true } },
+        user2: { select: { id: true, name: true, avatarUrl: true, skills: true, role: true } }
+      }
+    });
+
+    const recipientId = isUser1 ? verification.user2Id : verification.user1Id;
+    await prisma.notification.create({
+      data: {
+        type: 'verification_answers',
+        title: 'Skillset Answers Submitted',
+        message: `${req.user.name} submitted answers to your verification questions!`,
+        link: `/team-match?verificationId=${id}`,
+        userId: recipientId
+      }
+    });
+
+    res.json(updatedVerification);
+  } catch (error) {
+    console.error('Error submitting verification answers:', error);
+    res.status(500).json({ error: 'Failed to submit answers' });
+  }
+};
+
+// Evaluate / Verify partner's answers
+export const evaluateVerification = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { action } = req.body; // 'verify' | 'reject'
+
+    const verification = await prisma.partnerVerification.findUnique({
+      where: { id }
+    });
+
+    if (!verification) {
+      return res.status(404).json({ error: 'Verification session not found' });
+    }
+
+    const isUser1 = verification.user1Id === userId;
+    const isUser2 = verification.user2Id === userId;
+
+    if (!isUser1 && !isUser2) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const newStatus = action === 'verify' ? 'verified' : 'rejected';
+    const updatedData = isUser1 
+      ? { u1Status: newStatus }
+      : { u2Status: newStatus };
+
+    const u1Final = isUser1 ? newStatus : verification.u1Status;
+    const u2Final = isUser2 ? newStatus : verification.u2Status;
+
+    if (u1Final === 'verified' || u2Final === 'verified') {
+      updatedData.overallStatus = 'verified';
+    } else if (u1Final === 'rejected' && u2Final === 'rejected') {
+      updatedData.overallStatus = 'failed';
+    }
+
+    const updatedVerification = await prisma.partnerVerification.update({
+      where: { id },
+      data: updatedData,
+      include: {
+        user1: { select: { id: true, name: true } },
+        user2: { select: { id: true, name: true } }
+      }
+    });
+
+    const recipientId = isUser1 ? verification.user2Id : verification.user1Id;
+    await prisma.notification.create({
+      data: {
+        type: 'verification_evaluated',
+        title: action === 'verify' ? 'Skillset Verified!' : 'Skillset Review Updated',
+        message: `${req.user.name} ${action === 'verify' ? 'verified your skillset response!' : 'reviewed your answers.'}`,
+        link: `/team-match?verificationId=${id}`,
+        userId: recipientId
+      }
+    });
+
+    res.json(updatedVerification);
+  } catch (error) {
+    console.error('Error evaluating verification:', error);
+    res.status(500).json({ error: 'Failed to evaluate verification' });
+  }
+};
+
+// Get single verification status by ID or target user ID
+export const getVerificationStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const verification = await prisma.partnerVerification.findFirst({
+      where: {
+        OR: [
+          { id },
+          { user1Id: userId, user2Id: id },
+          { user1Id: id, user2Id: userId }
+        ]
+      },
+      include: {
+        user1: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, skills: true, role: true } },
+        user2: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, skills: true, role: true } }
+      }
+    });
+
+    if (!verification) {
+      return res.status(404).json({ error: 'Verification not found' });
+    }
+
+    res.json(verification);
+  } catch (error) {
+    console.error('Error getting verification status:', error);
+    res.status(500).json({ error: 'Failed to fetch verification status' });
+  }
+};
+
