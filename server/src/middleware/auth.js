@@ -31,9 +31,9 @@ export const authenticateToken = async (req, res, next) => {
 
         if (authHeader && authHeader.startsWith('Bearer ')) {
             token = authHeader.substring(7);
-        } else if (req.cookies && req.cookies.github_token) {
+        } else if (req.cookies && (req.cookies.token || req.cookies.github_token)) {
             // Fallback to cookie-based auth
-            token = req.cookies.github_token;
+            token = req.cookies.token || req.cookies.github_token;
         }
 
         if (!token) {

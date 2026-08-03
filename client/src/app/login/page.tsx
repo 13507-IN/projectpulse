@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/context/auth-context";
 
-export default function LoginPage() {
+function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -25,7 +25,6 @@ export default function LoginPage() {
   useEffect(() => {
     if (error) {
       toast.error(error === 'access_denied' ? 'GitHub login was cancelled' : 'Failed to login with GitHub');
-      // Remove error from URL
       router.replace('/login');
     }
     if (success) {
@@ -37,7 +36,6 @@ export default function LoginPage() {
   const handleGitHubLogin = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Get the base URL from environment variable or fallback to localhost
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
     window.location.href = `${apiUrl}/api/auth/github`;
   };
@@ -160,6 +158,18 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
+      </div>
+    }>
+      <LoginForm />
+    </React.Suspense>
   );
 }
 

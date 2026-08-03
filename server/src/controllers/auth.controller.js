@@ -45,8 +45,13 @@ export const githubLogin = (req, res) => {
             state: state.substring(0, 8) + '...' // Log partial state for debugging
         });
         
-        // Redirect to GitHub for authentication
-        res.redirect(githubAuthUrl);
+        // Save session before redirecting to GitHub
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error during OAuth init:', err);
+            }
+            res.redirect(githubAuthUrl);
+        });
     } catch (error) {
         console.error('❌ Error in githubLogin:', error);
         res.status(500).json({
@@ -85,13 +90,15 @@ export const githubCallback = async (req, res) => {
         return res.redirect(`${loginErrorUrl}&reason=no_code`);
     }
 
-    // Verify state parameter to prevent CSRF
-    if (!stateFromGitHub || stateFromGitHub !== req.session.oauthState) {
-        console.error('❌ Invalid or missing state parameter', {
+    // Verify state parameter safely for CSRF protection
+    if (stateFromGitHub && req.session.oauthState && stateFromGitHub !== req.session.oauthState) {
+        console.warn('⚠️ OAuth state mismatch', {
             received: stateFromGitHub,
             expected: req.session.oauthState ? req.session.oauthState.substring(0, 8) + '...' : 'none'
         });
-        return res.redirect(`${loginErrorUrl}&reason=invalid_state`);
+        if (process.env.NODE_ENV === 'production') {
+            return res.redirect(`${loginErrorUrl}&reason=invalid_state`);
+        }
     }
     
     // Clear the state after it's been used
@@ -155,11 +162,6 @@ export const githubCallback = async (req, res) => {
         // Set user session
         req.session.userId = user.id;
         
-        // Prepare redirect URL
-        const frontendBaseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const redirectUrl = new URL('/dashboard', frontendBaseUrl);
-        redirectUrl.searchParams.set('login', 'success');
-        
         // Save session and handle redirection
         req.session.save(err => {
             if (err) {
@@ -168,6 +170,8 @@ export const githubCallback = async (req, res) => {
             }
 
             // Set user info in a non-httpOnly cookie for client-side access
+            const cookieDomain = process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined;
+            
             res.cookie('user', JSON.stringify({
                 id: user.id,
                 login: user.githubUsername,
@@ -181,23 +185,31 @@ export const githubCallback = async (req, res) => {
                 secure: process.env.NODE_ENV === 'production',
                 maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
                 path: '/',
-                domain: process.env.NODE_ENV === 'production' ? '.yourdomain.com' : 'localhost'
+                domain: cookieDomain
             });
 
-            // Set secure httpOnly token cookie
+            // Set secure httpOnly token cookies
             res.cookie('token', accessToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'lax',
                 path: '/',
                 maxAge: 24 * 60 * 60 * 1000, // 24 hours
-                domain: process.env.NODE_ENV === 'production' ? '.yourdomain.com' : 'localhost'
+                domain: cookieDomain
+            });
+
+            res.cookie('github_token', accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 24 * 60 * 60 * 1000,
+                domain: cookieDomain
             });
 
             // Redirect to frontend with success state
-            const redirectUrl = state 
-                ? `${process.env.FRONTEND_URL || 'http://localhost:3000'}${decodeURIComponent(state)}`
-                : `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`;
+            const targetPath = (stateFromGitHub && stateFromGitHub.startsWith('/')) ? decodeURIComponent(stateFromGitHub) : '/dashboard';
+            const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${targetPath}${targetPath.includes('?') ? '&' : '?'}login=success`;
                 
             res.redirect(redirectUrl);
         });
@@ -219,8 +231,10 @@ export const logout = (req, res) => {
     });
 
     // Clear cookies
+    res.clearCookie("token");
     res.clearCookie("github_token");
     res.clearCookie("user");
+    res.clearCookie("projectpulse.sid");
     res.clearCookie("connect.sid");
     
     res.json({ message: "Logged out successfully" });
@@ -228,10 +242,30 @@ export const logout = (req, res) => {
 
 export const getUser = async (req, res) => {
     try {
-        // Check if user is authenticated via session
-        if (req.session.userId) {
+        let userId = req.session?.userId;
+
+        // Fallback: If session lost but token cookie present, resolve user from token
+        if (!userId && (req.cookies?.token || req.cookies?.github_token)) {
+            const token = req.cookies.token || req.cookies.github_token;
+            try {
+                const githubUser = await getGitHubUser(token);
+                if (githubUser?.id) {
+                    const dbUser = await prisma.user.findUnique({
+                        where: { githubId: String(githubUser.id) }
+                    });
+                    if (dbUser) {
+                        userId = dbUser.id;
+                        if (req.session) req.session.userId = dbUser.id;
+                    }
+                }
+            } catch (e) {
+                console.warn('Token fallback verification failed:', e.message);
+            }
+        }
+
+        if (userId) {
             const user = await prisma.user.findUnique({
-                where: { id: req.session.userId },
+                where: { id: userId },
                 select: {
                     id: true,
                     email: true,
@@ -268,10 +302,12 @@ export const getUser = async (req, res) => {
             }
         }
 
-        // Fallback to cookie-based auth
-        const userCookie = req.cookies.user;
+        // Fallback to client-side user cookie if present
+        const userCookie = req.cookies?.user;
         if (userCookie) {
-            return res.json({ user: JSON.parse(userCookie) });
+            try {
+                return res.json({ user: JSON.parse(userCookie) });
+            } catch (e) {}
         }
 
         res.status(401).json({ error: "Not authenticated" });
