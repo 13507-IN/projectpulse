@@ -79,20 +79,25 @@ export default function Dashboard() {
 
   const fetchRepos = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/github/repositories', {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      const response = await fetch(`${backendUrl}/api/github/repositories`, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          // If unauthorized, try to refresh the auth
-          await checkAuth();
-          // Retry the request
-          await fetchRepos();
+          console.warn('Repositories fetch unauthorized (401)');
           return;
         }
         const errorText = await response.text();
@@ -101,7 +106,7 @@ export default function Dashboard() {
       }
 
       const data: Repository[] = await response.json();
-      setRepos(data);
+      setRepos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch repositories:', error);
     }
