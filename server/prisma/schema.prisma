@@ -49,6 +49,8 @@ model User {
   notifications   Notification[]
   sentInvites     TeamInvite[] @relation("InviteSender")
   receivedInvites TeamInvite[] @relation("InviteReceiver")
+  sentVerifications     PartnerVerification[] @relation("VerificationUser1")
+  receivedVerifications PartnerVerification[] @relation("VerificationUser2")
   repositories    Repository[]
   
   @@index([githubId])
@@ -278,3 +280,40 @@ model MatchScore {
   @@index([user2Id])
   @@index([score])
 }
+
+// Skillset Verification Challenge model between matched partners
+model PartnerVerification {
+  id              String    @id @default(cuid())
+  user1Id         String
+  user1           User      @relation("VerificationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  
+  user2Id         String
+  user2           User      @relation("VerificationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  
+  // Questions asked by User 1 for User 2 to answer
+  u1Questions     Json      @default("[]")
+  // Answers submitted by User 2
+  u1Answers       Json      @default("[]")
+  // Status of User 1's question track: pending, answered, verified, rejected
+  u1Status        String    @default("pending")
+  
+  // Questions asked by User 2 for User 1 to answer
+  u2Questions     Json      @default("[]")
+  // Answers submitted by User 1
+  u2Answers       Json      @default("[]")
+  // Status of User 2's question track: pending, answered, verified, rejected
+  u2Status        String    @default("pending")
+  
+  // Overall verification status: in_progress, verified, failed
+  overallStatus   String    @default("in_progress")
+  aiFeedback      Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([overallStatus])
+}
+
