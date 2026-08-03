@@ -70,3 +70,36 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom sleek dark scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(24, 24, 27, 0.8);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.6);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.9);
+}
+
+/* Firefox scrollbar support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(113, 113, 122, 0.6) rgba(24, 24, 27, 0.8);
+}
+
+/* Native select dropdown option styling fix for dark mode */
+select option {
+  background-color: #18181b !important;
+  color: #f4f4f5 !important;
+  padding: 8px 12px;
+}

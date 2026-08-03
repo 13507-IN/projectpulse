@@ -249,10 +249,10 @@ export default function Dashboard() {
                       {user ? 'Select a repository to sync with this project.' : 'Sign in with GitHub to connect repositories.'}
                     </p>
                     {user ? (
-                      <select className="w-full p-2 border rounded-md">
-                        <option value="">Select a repository...</option>
+                      <select className="w-full p-2.5 border rounded-md bg-zinc-900 text-zinc-100 border-zinc-700 focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer">
+                        <option value="" className="bg-zinc-900 text-zinc-100 py-1">Select a repository...</option>
                         {repos.map((repo: any) => (
-                          <option key={repo.id} value={repo.full_name}>
+                          <option key={repo.id} value={repo.full_name} className="bg-zinc-900 text-zinc-100 py-1">
                             {repo.full_name} {repo.private ? '(Private)' : '(Public)'}
                           </option>
                         ))}
