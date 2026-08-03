@@ -169,8 +169,7 @@ export const githubCallback = async (req, res) => {
                 return res.status(500).json({ error: 'Failed to save session' });
             }
 
-            // Set user info in a non-httpOnly cookie for client-side access
-            const cookieDomain = process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined;
+            const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
             
             res.cookie('user', JSON.stringify({
                 id: user.id,
@@ -181,35 +180,32 @@ export const githubCallback = async (req, res) => {
                 role: user.role
             }), {
                 httpOnly: false,
-                sameSite: 'lax',
-                secure: process.env.NODE_ENV === 'production',
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
                 maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-                path: '/',
-                domain: cookieDomain
+                path: '/'
             });
 
             // Set secure httpOnly token cookies
             res.cookie('token', accessToken, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
                 path: '/',
-                maxAge: 24 * 60 * 60 * 1000, // 24 hours
-                domain: cookieDomain
+                maxAge: 24 * 60 * 60 * 1000 // 24 hours
             });
 
             res.cookie('github_token', accessToken, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
                 path: '/',
-                maxAge: 24 * 60 * 60 * 1000,
-                domain: cookieDomain
+                maxAge: 24 * 60 * 60 * 1000
             });
 
-            // Redirect to frontend with success state
+            // Redirect to frontend with success state and token
             const targetPath = (stateFromGitHub && stateFromGitHub.startsWith('/')) ? decodeURIComponent(stateFromGitHub) : '/dashboard';
-            const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${targetPath}${targetPath.includes('?') ? '&' : '?'}login=success`;
+            const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${targetPath}${targetPath.includes('?') ? '&' : '?'}login=success&token=${accessToken}`;
                 
             res.redirect(redirectUrl);
         });
@@ -243,23 +239,39 @@ export const logout = (req, res) => {
 export const getUser = async (req, res) => {
     try {
         let userId = req.session?.userId;
+        let token = null;
 
-        // Fallback: If session lost but token cookie present, resolve user from token
-        if (!userId && (req.cookies?.token || req.cookies?.github_token)) {
-            const token = req.cookies.token || req.cookies.github_token;
-            try {
-                const githubUser = await getGitHubUser(token);
-                if (githubUser?.id) {
-                    const dbUser = await prisma.user.findUnique({
-                        where: { githubId: String(githubUser.id) }
-                    });
-                    if (dbUser) {
-                        userId = dbUser.id;
-                        if (req.session) req.session.userId = dbUser.id;
+        // Check Authorization header first
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+        } else if (req.cookies?.token || req.cookies?.github_token) {
+            token = req.cookies.token || req.cookies.github_token;
+        }
+
+        // If session userId is missing, lookup user by githubAccessToken or token
+        if (!userId && token) {
+            const dbUser = await prisma.user.findFirst({
+                where: { githubAccessToken: token }
+            });
+            if (dbUser) {
+                userId = dbUser.id;
+                if (req.session) req.session.userId = dbUser.id;
+            } else {
+                try {
+                    const githubUser = await getGitHubUser(token);
+                    if (githubUser?.id) {
+                        const foundUser = await prisma.user.findUnique({
+                            where: { githubId: String(githubUser.id) }
+                        });
+                        if (foundUser) {
+                            userId = foundUser.id;
+                            if (req.session) req.session.userId = foundUser.id;
+                        }
                     }
+                } catch (e) {
+                    console.warn('GitHub token validation failed:', e.message);
                 }
-            } catch (e) {
-                console.warn('Token fallback verification failed:', e.message);
             }
         }
 
@@ -297,6 +309,7 @@ export const getUser = async (req, res) => {
                         role: user.role,
                         skills: user.skills,
                         interests: user.interests,
+                        access_token: token || undefined
                     }
                 });
             }
@@ -310,7 +323,7 @@ export const getUser = async (req, res) => {
             } catch (e) {}
         }
 
-        res.status(401).json({ error: "Not authenticated" });
+        res.json({ user: null, authenticated: false });
     } catch (error) {
         console.error('Error fetching user:', error);
         res.status(500).json({ error: 'Failed to fetch user' });

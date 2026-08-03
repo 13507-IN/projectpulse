@@ -23,21 +23,28 @@ dotenv.config();
 
 const app = express();
 
+// Trust reverse proxy headers on Render/Vercel for HTTPS secure cookie detection
+app.set('trust proxy', 1);
+
 // Initialize Pinecone for AI matching
 initPinecone().catch(err => {
     console.error('Failed to initialize Pinecone:', err);
 });
 
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
+
 // Configure CORS with proper credentials support
 const allowedOrigins = [
-    process.env.FRONTEND_URL || 'http://localhost:3000',
+    process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, '') : 'http://localhost:3000',
     'http://localhost:3000',
     'http://127.0.0.1:3000'
 ];
 
 const corsOptions = {
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (!origin) return callback(null, true);
+        const cleanOrigin = origin.replace(/\/$/, '');
+        if (allowedOrigins.includes(cleanOrigin) || cleanOrigin.endsWith('.vercel.app')) {
             callback(null, true);
         } else {
             console.warn('Blocked by CORS:', origin);
@@ -48,7 +55,7 @@ const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     exposedHeaders: ['set-cookie'],
-    maxAge: 600, // 10 minutes
+    maxAge: 600,
     optionsSuccessStatus: 204
 };
 
@@ -67,14 +74,13 @@ const sessionConfig = {
     resave: false,
     saveUninitialized: false,
     name: 'projectpulse.sid',
-    proxy: process.env.NODE_ENV === 'production',
+    proxy: true,
     cookie: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        path: '/',
-        domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined
+        path: '/'
     },
     rolling: true
 };

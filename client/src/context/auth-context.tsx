@@ -30,33 +30,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const checkAuth = async () => {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
       const response = await fetch(`${backendUrl}/api/auth/user`, {
         method: 'GET',
-        credentials: 'include', // Important for sending cookies
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        credentials: 'include',
+        headers,
       });
 
       if (response.ok) {
         const data = await response.json();
         if (data.user) {
+          if (data.user.access_token && typeof window !== 'undefined') {
+            localStorage.setItem('token', data.user.access_token);
+          }
           setUser({
             id: data.user.id,
             login: data.user.login || data.user.githubUsername,
             name: data.user.name,
             email: data.user.email,
             avatar_url: data.user.avatarUrl || data.user.avatar_url,
-            access_token: data.user.access_token
+            access_token: data.user.access_token || storedToken || undefined
           });
         } else {
           setUser(null);
         }
       } else if (response.status === 401) {
-        // Clear any invalid session
         setUser(null);
-        document.cookie = 'user=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+          document.cookie = 'user=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        }
       }
     } catch (error) {
       console.error('Auth check failed:', error);
@@ -67,26 +79,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Check for OAuth callback
+    // Check for OAuth callback token in URL
     const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('token');
     const loginStatus = params.get('login');
-    
-    if (loginStatus === 'success') {
+
+    if (tokenFromUrl && typeof window !== 'undefined') {
+      localStorage.setItem('token', tokenFromUrl);
+    }
+
+    if (tokenFromUrl || loginStatus === 'success') {
       // Clean up the URL
       window.history.replaceState({}, document.title, window.location.pathname);
-      // Verify the session
       checkAuth();
     } else {
-      // Regular auth check
       checkAuth();
     }
   }, []);
 
   const login = async () => {
     try {
-      // Redirect directly to the GitHub OAuth URL
-      // The backend will handle the OAuth flow and redirect back to the frontend
-      window.location.href = 'http://localhost:4000/api/auth/github';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      window.location.href = `${backendUrl}/api/auth/github`;
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -95,7 +109,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     try {
-      await fetch('http://localhost:4000/api/auth/logout', {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      await fetch(`${backendUrl}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -105,11 +120,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('Logout failed:', error);
     } finally {
-      // Clear local state
-      localStorage.removeItem('token');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+      }
       setUser(null);
-      
-      // Force a hard refresh to clear any session state
       window.location.href = '/login';
     }
   };
