@@ -121,11 +121,18 @@ export default function TeamMatchPage() {
 
   const handleInvite = async (teammateId: string) => {
     try {
-      const response = await fetch('/api/team/invite', {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      const response = await fetch(`${backendUrl}/api/team/invite`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           receiverId: teammateId,
           message: `Hi! I'd love to collaborate with you on a project.`

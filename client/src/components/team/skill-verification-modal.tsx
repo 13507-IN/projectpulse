@@ -107,9 +107,13 @@ export function SkillVerificationModal({
     try {
       setLoading(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
       const response = await fetch(`${backendUrl}/api/team/verification/initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ targetUserId: targetUser.id }),
         credentials: 'include',
       });
@@ -162,9 +166,13 @@ export function SkillVerificationModal({
     try {
       setSubmitting(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
       const response = await fetch(`${backendUrl}/api/team/verification/${verification.id}/questions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ questions }),
         credentials: 'include',
       });
@@ -208,9 +216,13 @@ export function SkillVerificationModal({
     try {
       setSubmitting(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
       const response = await fetch(`${backendUrl}/api/team/verification/${verification.id}/answers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ answers }),
         credentials: 'include',
       });
@@ -233,9 +245,13 @@ export function SkillVerificationModal({
     try {
       setSubmitting(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
       const response = await fetch(`${backendUrl}/api/team/verification/${verification.id}/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ action }),
         credentials: 'include',
       });
