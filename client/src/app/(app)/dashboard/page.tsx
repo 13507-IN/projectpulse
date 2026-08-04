@@ -473,6 +473,90 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Your Active Projects Section */}
+        <div>
+          <Card className="bg-slate-950/80 border-slate-800">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                  Your Active Projects
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Manage and access your created project workspaces
+                </CardDescription>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setOpen(true)}
+                className="bg-indigo-950/40 border-indigo-500/40 text-indigo-300 hover:bg-indigo-900/50 flex items-center gap-1.5"
+              >
+                <PlusCircle className="h-4 w-4" /> Create New
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {userProjects.length === 0 ? (
+                <div className="text-center py-10 border border-dashed border-slate-800 rounded-xl bg-slate-900/30">
+                  <p className="text-slate-400 text-sm mb-3">You haven't created any project workspaces yet.</p>
+                  <RainbowButton onClick={() => setOpen(true)} className="text-xs h-9">
+                    <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Create Your First Project
+                  </RainbowButton>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {userProjects.map((project) => (
+                    <Card key={project.id} className="bg-slate-900/90 border-slate-800 hover:border-indigo-500/50 transition-all flex flex-col justify-between">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <CardTitle className="text-lg font-bold text-slate-100 line-clamp-1">{project.name}</CardTitle>
+                          <Badge variant="outline" className="bg-indigo-950/50 text-indigo-300 border-indigo-800 text-[10px] shrink-0">
+                            {project.category || 'Development'}
+                          </Badge>
+                        </div>
+                        <CardDescription className="text-slate-400 text-xs line-clamp-2 mt-1">
+                          {project.description || 'No description provided.'}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="py-2 space-y-3">
+                        {project.tech && project.tech.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {project.tech.map((t, i) => (
+                              <span key={i} className="text-[10px] bg-slate-950 text-slate-300 border border-slate-800 px-2 py-0.5 rounded">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {project.githubRepoName && (
+                          <div className="flex items-center gap-1.5 text-xs text-indigo-400">
+                            <Github className="h-3.5 w-3.5" />
+                            <a 
+                              href={project.githubRepoUrl || `https://github.com/${project.githubRepoName}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline flex items-center"
+                            >
+                              {project.githubRepoName} <ArrowUpRight className="h-3 w-3 ml-0.5" />
+                            </a>
+                          </div>
+                        )}
+                      </CardContent>
+                      <CardFooter className="pt-2 border-t border-slate-800/80">
+                        <Link href={`/project/${project.id}`} className="w-full">
+                          <RainbowButton className="w-full h-9 text-xs flex items-center justify-center">
+                            Open Workspace <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+                          </RainbowButton>
+                        </Link>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
         {user && repos.length > 0 && (
           <div>
             <Card>
