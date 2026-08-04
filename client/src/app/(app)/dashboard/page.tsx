@@ -46,6 +46,7 @@ import {
   MoreHorizontal,
   ArrowUpRight,
   Github,
+  Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +62,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 
 interface DashboardStats {
   activeProjects: number;
@@ -71,9 +73,32 @@ interface DashboardStats {
   overallProgress: number;
 }
 
+interface ProjectItem {
+  id: string;
+  name: string;
+  description: string;
+  category?: string;
+  tech?: string[];
+  status: string;
+  progress?: number;
+  githubRepoName?: string;
+  githubRepoUrl?: string;
+  updatedAt: string;
+}
+
 export default function Dashboard() {
   const [open, setOpen] = useState(false);
   const [repos, setRepos] = useState<Repository[]>([]);
+  const [userProjects, setUserProjects] = useState<ProjectItem[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newProject, setNewProject] = useState({
+    name: '',
+    description: '',
+    selectedRepo: '',
+    category: 'Web Development',
+    tech: '',
+  });
+
   const [stats, setStats] = useState<DashboardStats>({
     activeProjects: 0,
     pendingTasks: 0,
@@ -121,6 +146,32 @@ export default function Dashboard() {
     }
   };
 
+  const fetchUserProjects = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      const response = await fetch(`${backendUrl}/api/projects`, {
+        method: 'GET',
+        credentials: 'include',
+        headers
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUserProjects(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user projects:', error);
+    }
+  };
+
   const fetchRepos = async () => {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -160,8 +211,69 @@ export default function Dashboard() {
     if (user) {
       fetchRepos();
       fetchStats();
+      fetchUserProjects();
     }
   }, [user]);
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProject.name.trim()) {
+      toast.error('Please enter a project name');
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      const chosenRepo = repos.find(r => r.full_name === newProject.selectedRepo);
+
+      const payload = {
+        name: newProject.name.trim(),
+        description: newProject.description.trim(),
+        githubRepoId: chosenRepo ? String(chosenRepo.id) : undefined,
+        githubRepoUrl: chosenRepo ? chosenRepo.html_url : undefined,
+        githubRepoName: chosenRepo ? chosenRepo.name : undefined,
+        repoOwner: chosenRepo ? chosenRepo.owner?.login : undefined,
+        repoPrivate: chosenRepo ? chosenRepo.private : false,
+        category: newProject.category,
+        tech: newProject.tech ? newProject.tech.split(',').map(t => t.trim()).filter(Boolean) : (chosenRepo?.language ? [chosenRepo.language] : []),
+      };
+
+      const response = await fetch(`${backendUrl}/api/projects`, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to create project');
+      }
+
+      const created = await response.json();
+      toast.success(`Project "${created.name}" created successfully!`);
+      setOpen(false);
+      setNewProject({ name: '', description: '', selectedRepo: '', category: 'Web Development', tech: '' });
+      
+      fetchStats();
+      fetchRepos();
+      fetchUserProjects();
+    } catch (error: any) {
+      console.error('Error creating project:', error);
+      toast.error(error.message || 'Failed to create project');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const handleCloneInVSCode = (repo: Repository) => {
     // Try to open in VS Code directly
@@ -170,7 +282,6 @@ export default function Dashboard() {
     
     // Fallback to clipboard with instructions
     navigator.clipboard.writeText(repo.html_url).then(() => {
-      // Show a toast or notification that the URL was copied
       console.log('Repository URL copied to clipboard');
     }).catch(err => {
       console.error('Failed to copy to clipboard:', err);
@@ -185,7 +296,7 @@ export default function Dashboard() {
     );
   }
 
-  const effectiveActiveProjects = stats.activeProjects > 0 ? stats.activeProjects : repos.length;
+  const effectiveActiveProjects = userProjects.length > 0 ? userProjects.length : (stats.activeProjects > 0 ? stats.activeProjects : repos.length);
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -224,57 +335,84 @@ export default function Dashboard() {
                   </span>
                 </RainbowButton>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create a New Project</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="projectName">Project Name</Label>
-                    <Input
-                      id="projectName"
-                      placeholder="e.g., AI for Education"
-                    />
+              <DialogContent className="sm:max-w-[500px]">
+                <form onSubmit={handleCreateProject}>
+                  <DialogHeader>
+                    <DialogTitle>Create a New Project</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="projectName">Project Name <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="projectName"
+                        placeholder="e.g., AI for Education"
+                        value={newProject.name}
+                        onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        placeholder="A brief description of your project."
+                        value={newProject.description}
+                        onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="tech">Tech Stack (comma separated)</Label>
+                      <Input
+                        id="tech"
+                        placeholder="e.g. React, Node.js, TypeScript"
+                        value={newProject.tech}
+                        onChange={(e) => setNewProject({ ...newProject, tech: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Connect to GitHub</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {user ? 'Select a repository to sync with this project.' : 'Sign in with GitHub to connect repositories.'}
+                      </p>
+                      {user ? (
+                        <select 
+                          value={newProject.selectedRepo}
+                          onChange={(e) => setNewProject({ ...newProject, selectedRepo: e.target.value })}
+                          className="w-full p-2.5 border rounded-md bg-zinc-900 text-zinc-100 border-zinc-700 focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer text-sm"
+                        >
+                          <option value="" className="bg-zinc-900 text-zinc-100 py-1">Select a repository...</option>
+                          {repos.map((repo: any) => (
+                            <option key={repo.id} value={repo.full_name} className="bg-zinc-900 text-zinc-100 py-1">
+                              {repo.full_name} {repo.private ? '(Private)' : '(Public)'}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Button variant="outline" className="w-full" asChild>
+                          <a href="http://localhost:4000/api/auth/github">
+                            <Github className="mr-2 h-4 w-4" />
+                            Connect GitHub Account
+                          </a>
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      placeholder="A brief description of your project."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Connect to GitHub</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {user ? 'Select a repository to sync with this project.' : 'Sign in with GitHub to connect repositories.'}
-                    </p>
-                    {user ? (
-                      <select className="w-full p-2.5 border rounded-md bg-zinc-900 text-zinc-100 border-zinc-700 focus:ring-2 focus:ring-primary focus:outline-none cursor-pointer">
-                        <option value="" className="bg-zinc-900 text-zinc-100 py-1">Select a repository...</option>
-                        {repos.map((repo: any) => (
-                          <option key={repo.id} value={repo.full_name} className="bg-zinc-900 text-zinc-100 py-1">
-                            {repo.full_name} {repo.private ? '(Private)' : '(Public)'}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Button variant="outline" className="w-full" asChild>
-                        <a href="http://localhost:4000/api/auth/github">
-                          <Github className="mr-2 h-4 w-4" />
-                          Connect GitHub Account
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setOpen(false)}>
-                    Cancel
-                  </Button>
-                  <RainbowButton onClick={() => setOpen(false)}>
-                    Create Project
-                  </RainbowButton>
-                </DialogFooter>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                      Cancel
+                    </Button>
+                    <RainbowButton type="submit" disabled={isCreating}>
+                      {isCreating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />
+                          Creating...
+                        </>
+                      ) : (
+                        'Create Project'
+                      )}
+                    </RainbowButton>
+                  </DialogFooter>
+                </form>
               </DialogContent>
             </Dialog>
           </div>
