@@ -35,15 +35,36 @@ export const getMatchedTeammates = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Query candidate users excluding self
+    // Build flexible query for candidate users (excluding current logged in user)
     const where = {
       id: { not: userId },
-      ...(skills && { skills: { hasSome: skills.split(',') } }),
-      ...(interests && { interests: { hasSome: interests.split(',') } }),
-      ...(availability && { availability }),
-      ...(role && { role }),
-      ...(experience && { experience }),
     };
+
+    if (skills && typeof skills === 'string' && skills.trim()) {
+      const skillList = skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (skillList.length > 0) {
+        where.skills = { hasSome: skillList };
+      }
+    }
+
+    if (interests && typeof interests === 'string' && interests.trim()) {
+      const interestList = interests.split(',').map(i => i.trim()).filter(Boolean);
+      if (interestList.length > 0) {
+        where.interests = { hasSome: interestList };
+      }
+    }
+
+    if (role && typeof role === 'string' && role.trim()) {
+      where.role = { contains: role.trim().replace('-', ' '), mode: 'insensitive' };
+    }
+
+    if (availability && typeof availability === 'string' && availability.trim()) {
+      where.availability = availability.trim();
+    }
+
+    if (experience && typeof experience === 'string' && experience.trim()) {
+      where.experience = experience.trim();
+    }
 
     const candidateUsers = await prisma.user.findMany({
       where,
