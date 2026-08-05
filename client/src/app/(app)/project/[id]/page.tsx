@@ -532,13 +532,24 @@ export default function DynamicProjectWorkspace() {
                     )}
                   </CardContent>
                   <CardFooter className="pt-2 border-t border-slate-800/80">
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleInviteTeammate(candidate.id)}
-                      className="w-full h-8 text-xs bg-indigo-600 hover:bg-indigo-500 text-white"
-                    >
-                      Invite to Project
-                    </Button>
+                    {candidate.inviteStatus === 'pending' ? (
+                      <Button 
+                        disabled 
+                        size="sm"
+                        className="w-full h-8 text-xs bg-slate-800 text-indigo-300 border border-indigo-700/60 cursor-not-allowed opacity-90"
+                      >
+                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+                        Invite Sent (Pending)
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleInviteTeammate(candidate.id)}
+                        className="w-full h-8 text-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                      >
+                        Invite to Project
+                      </Button>
+                    )}
                   </CardFooter>
                 </Card>
               ))}
