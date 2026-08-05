@@ -40,9 +40,15 @@ export const getMatchedTeammates = async (req, res) => {
       },
     });
 
-    if (!currentUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const userObj = currentUser || {
+      id: userId || 'guest',
+      name: 'Guest User',
+      skills: [],
+      interests: [],
+      availability: 'Full-time',
+      experience: 'Intermediate',
+      role: 'Developer'
+    };
 
     // Build flexible query for candidate users (excluding current logged in user)
     const where = {
@@ -139,7 +145,7 @@ export const getMatchedTeammates = async (req, res) => {
 
     // Map candidate users with rich match calculations, verification status, and invite status
     let matchedTeammates = candidateUsers.map(user => {
-      const matchDetails = calculateMatchDetails(currentUser, user, targetProject);
+      const matchDetails = calculateMatchDetails(userObj, user, targetProject);
       
       // Find verification record with this user if exists
       const verif = verifications.find(v => 

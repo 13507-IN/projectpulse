@@ -69,11 +69,9 @@ export default function TeamMatchPage() {
   });
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchUserProjects();
-      fetchMatchedTeammates();
-    }
-  }, [isAuthenticated, selectedProjectId]);
+    fetchUserProjects();
+    fetchMatchedTeammates();
+  }, [selectedProjectId]);
 
   const fetchUserProjects = async () => {
     try {
@@ -97,15 +95,22 @@ export default function TeamMatchPage() {
       setLoading(true);
       
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-      const queryParams = new URLSearchParams({
-        skills: filters.skills,
-        interests: filters.interests,
-        role: filters.role,
-        availability: filters.availability,
-        minScore: filters.minScore,
-        projectId: selectedProjectId,
-        limit: '12'
-      }).toString();
+      const searchParams = new URLSearchParams();
+      if (filters.skills?.trim()) searchParams.append('skills', filters.skills.trim());
+      if (filters.interests?.trim()) searchParams.append('interests', filters.interests.trim());
+      if (filters.role?.trim() && !['all', 'any', 'role'].includes(filters.role.trim().toLowerCase())) {
+        searchParams.append('role', filters.role.trim());
+      }
+      if (filters.availability?.trim() && !['all', 'any', 'availability'].includes(filters.availability.trim().toLowerCase())) {
+        searchParams.append('availability', filters.availability.trim());
+      }
+      if (filters.minScore?.trim() && !['0', 'all', 'min match score'].includes(filters.minScore.trim().toLowerCase())) {
+        searchParams.append('minScore', filters.minScore.trim());
+      }
+      if (selectedProjectId) searchParams.append('projectId', selectedProjectId);
+      searchParams.append('limit', '12');
+
+      const queryParams = searchParams.toString();
 
       const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const headers: Record<string, string> = {
