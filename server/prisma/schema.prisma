@@ -20,6 +20,10 @@ model User {
   githubId        String?   @unique
   githubUsername  String?   @unique
   githubAccessToken String?
+  
+  // Google OAuth fields
+  googleId          String?   @unique
+  googleAccessToken String?
   avatarUrl       String?
   bio             String?
   location        String?

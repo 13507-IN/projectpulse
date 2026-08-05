@@ -157,6 +157,7 @@ export default function TeamMatchPage() {
         headers,
         body: JSON.stringify({
           receiverId: teammateId,
+          projectId: selectedProjectId || undefined,
           message: `Hi! I'd love to collaborate with you on a project.`
         }),
         credentials: 'include',

@@ -165,6 +165,11 @@ export const calculateMatchDetails = (user1, user2, targetProject = null) => {
 
   // 4. Availability (10% weight)
   if (user1.availability && user2.availability) {
+    if (user1.availability === user2.availability) {
+      availabilityScore = 95;
+      highlights.push(`Matching Availability: ${user1.availability}`);
+    } else if (user1.availability === 'flexible' || user2.availability === 'flexible') {
+      availabilityScore = 80;
     } else {
       availabilityScore = 40;
     }
@@ -184,12 +189,16 @@ export const calculateMatchDetails = (user1, user2, targetProject = null) => {
   }
 
   // Overall Score Calculation
-  const totalScore = Math.round(
+  let totalScore = Math.round(
     (roleSynergyScore * 0.25) +
     (skillScore * 0.35) +
     (interestScore * 0.20) +
     (((availabilityScore + experienceScore) / 2) * 0.20)
   );
+
+  if (targetProject && projectRelevanceScore > 0) {
+    totalScore = Math.min(99, Math.round(totalScore * 0.7 + projectRelevanceScore * 0.3));
+  }
 
   const finalScore = Math.min(99, Math.max(50, totalScore));
 
@@ -202,7 +211,7 @@ export const calculateMatchDetails = (user1, user2, targetProject = null) => {
       availabilityScore,
       experienceScore
     },
-    highlights: highlights.slice(0, 4)
+    highlights: Array.from(new Set(highlights)).slice(0, 4)
   };
 };
 

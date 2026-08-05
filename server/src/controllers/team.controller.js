@@ -156,15 +156,43 @@ export const sendTeamInvite = async (req, res) => {
     const senderId = req.user.id;
     const { projectId, receiverId, message } = req.body;
 
-    // Validate required fields
-    if (!projectId || !receiverId) {
-      return res.status(400).json({ error: 'Project ID and receiver ID are required' });
+    if (!receiverId) {
+      return res.status(400).json({ error: 'Receiver ID is required' });
+    }
+
+    let targetProjectId = projectId;
+
+    if (!targetProjectId) {
+      // Find sender's most recent project
+      const userProject = await prisma.project.findFirst({
+        where: {
+          OR: [
+            { ownerId: senderId },
+            { members: { some: { userId: senderId } } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (userProject) {
+        targetProjectId = userProject.id;
+      } else {
+        // Auto-create a Collaborative Workspace project
+        const defaultProject = await prisma.project.create({
+          data: {
+            name: 'Collaborative Workspace',
+            description: 'Default project workspace created for team collaboration.',
+            ownerId: senderId,
+          },
+        });
+        targetProjectId = defaultProject.id;
+      }
     }
 
     // Verify project exists and sender has permission
     const project = await prisma.project.findFirst({
       where: {
-        id: projectId,
+        id: targetProjectId,
         OR: [
           { ownerId: senderId },
           {
@@ -195,7 +223,7 @@ export const sendTeamInvite = async (req, res) => {
     // Check if invite already exists
     const existingInvite = await prisma.teamInvite.findFirst({
       where: {
-        projectId,
+        projectId: targetProjectId,
         receiverId,
         status: 'pending',
       },
@@ -208,7 +236,7 @@ export const sendTeamInvite = async (req, res) => {
     // Create invite
     const invite = await prisma.teamInvite.create({
       data: {
-        projectId,
+        projectId: targetProjectId,
         senderId,
         receiverId,
         message,

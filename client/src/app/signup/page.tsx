@@ -12,13 +12,27 @@ import { useAuth } from "@/context/auth-context";
 export default function SignupPage() {
   const { login, checkAuth } = useAuth();
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     firstname: '',
     lastname: '',
     email: '',
     password: '',
   });
-  const [loading, setLoading] = useState(false);
+
+  const handleGoogleLogin = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    window.location.href = `${apiUrl}/api/auth/google`;
+  };
+
+  const handleGitHubLogin = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    window.location.href = `${apiUrl}/api/auth/github`;
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -27,7 +41,7 @@ export default function SignupPage() {
       return;
     }
     
-    setLoading(true);
+    setIsLoading(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
       const response = await fetch(`${apiUrl}/api/users/register`, {
@@ -56,7 +70,7 @@ export default function SignupPage() {
       console.error('Registration failed:', error);
       alert('Failed to register. Please try again.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -123,9 +137,9 @@ export default function SignupPage() {
           <button
             className="bg-gradient-to-br relative group/btn from-black dark:from-zinc-900 dark:to-zinc-900 to-neutral-600 block dark:bg-zinc-800 w-full text-white rounded-md h-10 font-medium shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:shadow-[0px_1px_0px_0px_var(--zinc-800)_inset,0px_-1px_0px_0px_var(--zinc-800)_inset] disabled:opacity-50"
             type="submit"
-            disabled={loading}
+            disabled={isLoading}
           >
-            {loading ? "Signing up..." : "Sign up"} &rarr;
+            {isLoading ? "Signing up..." : "Sign up"} &rarr;
             <BottomGradient />
           </button>
 
@@ -133,23 +147,26 @@ export default function SignupPage() {
 
           <div className="flex flex-col space-y-4">
             <button
-              onClick={() => login()}
-              className=" relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)]"
+              onClick={handleGitHubLogin}
+              disabled={isLoading}
+              className="relative group/btn flex space-x-2 items-center justify-center px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)] disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               <IconBrandGithub className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
               <span className="text-neutral-700 dark:text-neutral-300 text-sm">
-                GitHub
+                Sign Up with GitHub
               </span>
               <BottomGradient />
             </button>
             <button
-              className=" relative group/btn flex space-x-2 items-center justify-start px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)]"
+              onClick={handleGoogleLogin}
+              disabled={isLoading}
+              className="relative group/btn flex space-x-2 items-center justify-center px-4 w-full text-black rounded-md h-10 font-medium shadow-input bg-gray-50 dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_var(--neutral-800)] disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               <IconBrandGoogle className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
               <span className="text-neutral-700 dark:text-neutral-300 text-sm">
-                Google
+                Sign Up with Google
               </span>
               <BottomGradient />
             </button>

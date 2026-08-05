@@ -1,9 +1,9 @@
 import { getGitHubAccessToken, getGitHubUser } from "../utils/github.js";
 import prisma from '../config/prisma.js';
 
+// GitHub OAuth Login Initiator
 export const githubLogin = (req, res) => {
     try {
-        // Validate required environment variables
         const missing = [];
         if (!process.env.GITHUB_CLIENT_ID) missing.push('GITHUB_CLIENT_ID');
         if (!process.env.GITHUB_CLIENT_SECRET) missing.push('GITHUB_CLIENT_SECRET');
@@ -18,16 +18,10 @@ export const githubLogin = (req, res) => {
             });
         }
 
-        // Generate a secure state token
         const state = Math.random().toString(36).substring(2);
-        
-        // Store state in session for CSRF protection
         req.session.oauthState = state;
-        
-        // Define required OAuth scopes
         const scope = 'user:email repo';
         
-        // Build the GitHub OAuth URL
         const params = new URLSearchParams({
             client_id: process.env.GITHUB_CLIENT_ID,
             redirect_uri: process.env.GITHUB_CALLBACK_URL,
@@ -42,86 +36,41 @@ export const githubLogin = (req, res) => {
             callbackUrl: process.env.GITHUB_CALLBACK_URL,
             hasClientId: !!process.env.GITHUB_CLIENT_ID,
             hasClientSecret: !!process.env.GITHUB_CLIENT_SECRET,
-            state: state.substring(0, 8) + '...' // Log partial state for debugging
+            state: state.substring(0, 8) + '...'
         });
         
-        // Save session before redirecting to GitHub
         req.session.save((err) => {
-            if (err) {
-                console.error('Session save error during OAuth init:', err);
-            }
+            if (err) console.error('Session save error during OAuth init:', err);
             res.redirect(githubAuthUrl);
         });
     } catch (error) {
         console.error('❌ Error in githubLogin:', error);
-        res.status(500).json({
-            error: 'Failed to initialize GitHub authentication',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ error: 'Failed to initialize GitHub authentication' });
     }
 };
 
+// GitHub OAuth Callback Handler
 export const githubCallback = async (req, res) => {
     const { code, state: stateFromGitHub, error: gitHubError, error_description } = req.query;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const loginErrorUrl = `${frontendUrl}/login?error=oauth_failed`;
     
-    // Log the callback for debugging
-    console.log('🔄 GitHub OAuth Callback received:', { 
-        hasCode: !!code, 
-        state: stateFromGitHub ? `${stateFromGitHub.substring(0, 8)}...` : 'none',
-        error: gitHubError || 'none',
-        errorDescription: error_description || 'none'
-    });
-
-    // Handle OAuth errors from GitHub
-    if (gitHubError) {
-        console.error('❌ GitHub OAuth Error:', { 
-            error: gitHubError, 
-            description: error_description,
-            state: stateFromGitHub 
-        });
-        return res.redirect(`${loginErrorUrl}&reason=${encodeURIComponent(gitHubError)}`);
+    if (gitHubError || !code) {
+        console.error('❌ GitHub OAuth Error or missing code:', gitHubError);
+        return res.redirect(`${loginErrorUrl}&reason=${encodeURIComponent(gitHubError || 'no_code')}`);
     }
-
-    // Verify we have the required authorization code
-    if (!code) {
-        console.error('❌ No authorization code received from GitHub');
-        return res.redirect(`${loginErrorUrl}&reason=no_code`);
-    }
-
-    // Verify state parameter safely for CSRF protection
-    if (stateFromGitHub && req.session.oauthState && stateFromGitHub !== req.session.oauthState) {
-        console.warn('⚠️ OAuth state mismatch', {
-            received: stateFromGitHub,
-            expected: req.session.oauthState ? req.session.oauthState.substring(0, 8) + '...' : 'none'
-        });
-        if (process.env.NODE_ENV === 'production') {
-            return res.redirect(`${loginErrorUrl}&reason=invalid_state`);
-        }
-    }
-    
-    // Clear the state after it's been used
-    delete req.session.oauthState;
 
     try {
-        console.log('Exchanging authorization code for access token...');
         const accessToken = await getGitHubAccessToken(code);
-        
         if (!accessToken) {
-            console.error('No access token received from GitHub');
-            return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=no_token`);
+            return res.redirect(`${frontendUrl}/login?error=no_token`);
         }
 
-        console.log('Fetching GitHub user profile...');
         const githubUser = await getGitHubUser(accessToken);
-        
         if (!githubUser || !githubUser.id) {
-            console.error('Invalid GitHub user data received:', githubUser);
             throw new Error("Failed to fetch GitHub user data");
         }
 
-        // Find or create user in database
         let user = await prisma.user.upsert({
             where: { githubId: String(githubUser.id) },
             update: {
@@ -159,62 +108,143 @@ export const githubCallback = async (req, res) => {
             }
         });
 
-        // Set user session
         req.session.userId = user.id;
-        
-        // Save session and handle redirection
         req.session.save(err => {
-            if (err) {
-                console.error('Session save error:', err);
-                return res.status(500).json({ error: 'Failed to save session' });
-            }
-
-            const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' || Boolean(process.env.RENDER_SERVICE_ID);
-            
-            res.cookie('user', JSON.stringify({
-                id: user.id,
-                login: user.githubUsername,
-                name: user.name,
-                email: user.email,
-                avatar_url: user.avatarUrl,
-                role: user.role
-            }), {
-                httpOnly: false,
-                sameSite: isProd ? 'none' : 'lax',
-                secure: isProd,
-                maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-                path: '/'
-            });
-
-            // Set secure httpOnly token cookies
-            res.cookie('token', accessToken, {
-                httpOnly: true,
-                sameSite: isProd ? 'none' : 'lax',
-                secure: isProd,
-                path: '/',
-                maxAge: 24 * 60 * 60 * 1000 // 24 hours
-            });
-
-            res.cookie('github_token', accessToken, {
-                httpOnly: true,
-                sameSite: isProd ? 'none' : 'lax',
-                secure: isProd,
-                path: '/',
-                maxAge: 24 * 60 * 60 * 1000
-            });
-
-            // Redirect to frontend with success state and token
-            const targetPath = (stateFromGitHub && stateFromGitHub.startsWith('/')) ? decodeURIComponent(stateFromGitHub) : '/dashboard';
-            const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${targetPath}${targetPath.includes('?') ? '&' : '?'}login=success&token=${accessToken}`;
-                
+            if (err) console.error('Session save error:', err);
+            const redirectUrl = `${frontendUrl}/dashboard?auth=success&token=${accessToken}`;
             res.redirect(redirectUrl);
         });
-    } catch (err) {
-        console.error("GitHub OAuth Error:", err.message);
-        if (err.response) {
-            console.error('GitHub OAuth error response:', err.response.data);
+    } catch (error) {
+        console.error('❌ Error in githubCallback:', error);
+        res.redirect(loginErrorUrl);
+    }
+};
+
+// Google OAuth Login Initiator
+export const googleLogin = (req, res) => {
+    try {
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        const redirectUri = process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/auth/google/callback`;
+
+        const state = Math.random().toString(36).substring(2);
+        req.session.oauthState = state;
+
+        const scope = 'openid email profile';
+        const params = new URLSearchParams({
+            client_id: clientId || 'GOOGLE_CLIENT_ID_PLACEHOLDER',
+            redirect_uri: redirectUri,
+            response_type: 'code',
+            scope: scope,
+            state: state,
+            prompt: 'select_account'
+        });
+
+        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+        console.log('🔑 Initiating Google OAuth flow with redirect URI:', redirectUri);
+
+        req.session.save((err) => {
+            if (err) console.error('Session save error during Google OAuth init:', err);
+            res.redirect(googleAuthUrl);
+        });
+    } catch (error) {
+        console.error('❌ Error in googleLogin:', error);
+        res.status(500).json({ error: 'Failed to initialize Google authentication' });
+    }
+};
+
+// Google OAuth Callback Handler
+export const googleCallback = async (req, res) => {
+    const { code, state: stateFromGoogle, error: googleError } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const redirectUri = process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/auth/google/callback`;
+
+    if (googleError || !code) {
+        console.error('❌ Google OAuth Error or missing code:', googleError);
+        return res.redirect(`${frontendUrl}/login?error=oauth_failed`);
+    }
+
+    try {
+        const tokenParams = new URLSearchParams({
+            code,
+            client_id: process.env.GOOGLE_CLIENT_ID || '',
+            client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+            redirect_uri: redirectUri,
+            grant_type: 'authorization_code'
+        });
+
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: tokenParams.toString()
+        });
+
+        if (!tokenRes.ok) {
+            const errText = await tokenRes.text();
+            console.error('Failed to exchange Google OAuth code:', errText);
+            return res.redirect(`${frontendUrl}/login?error=token_exchange_failed`);
         }
-        res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=oauth_failed`);
+
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+
+        // Fetch user profile from Google UserInfo API
+        const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+
+        if (!userRes.ok) {
+            throw new Error('Failed to fetch Google user profile');
+        }
+
+        const googleUser = await userRes.json();
+
+        // Upsert user in Prisma DB
+        let user = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { googleId: googleUser.id },
+                    { email: googleUser.email }
+                ]
+            }
+        });
+
+        if (user) {
+            user = await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    googleId: googleUser.id,
+                    googleAccessToken: accessToken,
+                    name: user.name || googleUser.name,
+                    avatarUrl: user.avatarUrl || googleUser.picture,
+                    lastLogin: new Date()
+                }
+            });
+        } else {
+            user = await prisma.user.create({
+                data: {
+                    googleId: googleUser.id,
+                    googleAccessToken: accessToken,
+                    email: googleUser.email,
+                    name: googleUser.name || `${googleUser.given_name || ''} ${googleUser.family_name || ''}`.trim() || 'Google User',
+                    firstName: googleUser.given_name,
+                    lastName: googleUser.family_name,
+                    avatarUrl: googleUser.picture,
+                    role: 'developer',
+                    lastLogin: new Date()
+                }
+            });
+        }
+
+        req.session.userId = user.id;
+        req.session.save(err => {
+            if (err) console.error('Session save error:', err);
+            const redirectUrl = `${frontendUrl}/dashboard?auth=success&token=${accessToken}`;
+            res.redirect(redirectUrl);
+        });
+    } catch (error) {
+        console.error('❌ Error in googleCallback:', error);
+        res.redirect(`${frontendUrl}/login?error=oauth_failed`);
     }
 };
 

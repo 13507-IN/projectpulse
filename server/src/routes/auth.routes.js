@@ -6,6 +6,8 @@ const router = express.Router();
 
 router.get("/github", authController.githubLogin);
 router.get("/github/callback", authController.githubCallback);
+router.get("/google", authController.googleLogin);
+router.get("/google/callback", authController.googleCallback);
 router.post("/exchange", authController.exchangeCode);
 router.get("/verify", authenticateToken, authController.verifyToken);
 router.post("/verify", authenticateToken, authController.verifyToken); // Support extension POST verify
