@@ -10,7 +10,16 @@ import {
 export const getMatchedTeammates = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { skills, interests, availability, role, experience, minScore, limit = 12 } = req.query;
+    const { skills, interests, availability, role, experience, minScore, projectId, limit = 12 } = req.query;
+
+    // Fetch target project details if matching for a specific project
+    let targetProject = null;
+    if (projectId && typeof projectId === 'string' && projectId.trim()) {
+      targetProject = await prisma.project.findUnique({
+        where: { id: projectId.trim() },
+        select: { id: true, name: true, category: true, tech: true },
+      });
+    }
 
     // Get current user with necessary fields
     const currentUser = await prisma.user.findUnique({
@@ -96,7 +105,7 @@ export const getMatchedTeammates = async (req, res) => {
 
     // Map candidate users with rich match calculations and verification status
     let matchedTeammates = candidateUsers.map(user => {
-      const matchDetails = calculateMatchDetails(currentUser, user);
+      const matchDetails = calculateMatchDetails(currentUser, user, targetProject);
       
       // Find verification record with this user if exists
       const verif = verifications.find(v => 

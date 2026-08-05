@@ -9,6 +9,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -262,9 +263,61 @@ export default function DynamicProjectWorkspace() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
+  const [recommendedTeammates, setRecommendedTeammates] = useState<any[]>([]);
+
   useEffect(() => {
     fetchProjectDetails();
+    fetchRecommendedTeammates();
   }, [projectId]);
+
+  const fetchRecommendedTeammates = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
+      const res = await fetch(`${backendUrl}/api/team?projectId=${projectId}&limit=3`, {
+        credentials: 'include',
+        headers,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setRecommendedTeammates(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch recommended teammates for project:', err);
+    }
+  };
+
+  const handleInviteTeammate = async (teammateId: string) => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
+      const res = await fetch(`${backendUrl}/api/team/invite`, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          receiverId: teammateId,
+          projectId,
+          message: `Hi! I'd love to invite you to collaborate on ${project?.name || 'this project'}.`
+        }),
+      });
+
+      if (res.ok) {
+        toast.success('Project invite sent!');
+      } else {
+        toast.error('Failed to send project invite');
+      }
+    } catch (err) {
+      toast.error('Error sending project invite');
+    }
+  };
 
   const fetchProjectDetails = async () => {
     try {
@@ -411,6 +464,80 @@ export default function DynamicProjectWorkspace() {
           </RainbowButton>
         </div>
       </header>
+
+      {/* AI Suggested Teammates Section */}
+      {recommendedTeammates.length > 0 && (
+        <Card className="mb-6 bg-slate-950/70 border-slate-800 backdrop-blur-md">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+                  </span>
+                  AI Suggested Teammates for {project.name}
+                </span>
+              </div>
+              <Link href="/team-match">
+                <Button variant="ghost" size="sm" className="text-xs text-indigo-400 hover:text-indigo-300">
+                  View All Candidates →
+                </Button>
+              </Link>
+            </div>
+            <CardDescription className="text-slate-400 text-xs">
+              Collaborators automatically matched based on {project.name}'s tech stack and domain
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {recommendedTeammates.map((candidate) => (
+                <Card key={candidate.id} className="bg-slate-900/90 border-slate-800 hover:border-indigo-500/50 transition-all flex flex-col justify-between">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10 border border-slate-700">
+                          <AvatarImage src={candidate.avatarUrl} alt={candidate.name} />
+                          <AvatarFallback>{candidate.name?.charAt(0) || 'U'}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <CardTitle className="text-sm font-bold text-slate-100">{candidate.name}</CardTitle>
+                          <CardDescription className="text-[11px] text-indigo-400 font-medium">
+                            {candidate.role || 'Developer'}
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <Badge className="bg-emerald-950/80 text-emerald-300 border-emerald-800 text-[10px]">
+                        {candidate.matchScore}% Match
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="py-2 space-y-2">
+                    {candidate.highlights && candidate.highlights.length > 0 && (
+                      <div className="space-y-1">
+                        {candidate.highlights.slice(0, 2).map((h: string, idx: number) => (
+                          <div key={idx} className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                            <span className="text-indigo-400 text-xs">✓</span> {h}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter className="pt-2 border-t border-slate-800/80">
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleInviteTeammate(candidate.id)}
+                      className="w-full h-8 text-xs bg-indigo-600 hover:bg-indigo-500 text-white"
+                    >
+                      Invite to Project
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Kanban Board Columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

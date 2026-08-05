@@ -86,12 +86,13 @@ const ROLE_SYNERGY_MAP = {
 };
 
 // Comprehensive Multi-Factor Partner Matching Calculation
-export const calculateMatchDetails = (user1, user2) => {
+export const calculateMatchDetails = (user1, user2, targetProject = null) => {
   let roleSynergyScore = 70;
   let skillScore = 0;
   let interestScore = 0;
   let availabilityScore = 50;
   let experienceScore = 50;
+  let projectRelevanceScore = 0;
   const highlights = [];
 
   // 1. Role Synergy (25% weight)
@@ -129,6 +130,26 @@ export const calculateMatchDetails = (user1, user2) => {
     skillScore = 55;
   }
 
+  // Project Requirement Matching (if project provided)
+  if (targetProject) {
+    const projectTech = (targetProject.tech || []).map(t => String(t).toLowerCase());
+    const projectCategory = (targetProject.category || '').toLowerCase();
+
+    // Check project tech overlap
+    const matchedProjectSkills = skills2.filter(s => projectTech.includes(s));
+    if (matchedProjectSkills.length > 0) {
+      projectRelevanceScore += 50;
+      highlights.unshift(`Project Fit: Fits ${matchedProjectSkills.slice(0, 2).join(', ').toUpperCase()} stack`);
+    }
+
+    // Check project category interest fit
+    const candidateInterests = (user2.interests || []).map(i => i.toLowerCase());
+    if (projectCategory && candidateInterests.some(ci => ci.includes(projectCategory) || projectCategory.includes(ci))) {
+      projectRelevanceScore += 40;
+      highlights.unshift(`Interested in ${targetProject.category}`);
+    }
+  }
+
   // 3. Interests Alignment (20% weight)
   const int1 = (user1.interests || []).map(i => i.toLowerCase());
   const int2 = (user2.interests || []).map(i => i.toLowerCase());
@@ -139,16 +160,11 @@ export const calculateMatchDetails = (user1, user2) => {
       highlights.push(`Shared Interests: ${commonInt.slice(0, 2).join(', ')}`);
     }
   } else {
-    interestScore = 50;
+    interestScore = 60;
   }
 
-  // 4. Availability & Experience (20% weight)
+  // 4. Availability (10% weight)
   if (user1.availability && user2.availability) {
-    if (user1.availability === user2.availability) {
-      availabilityScore = 100;
-      highlights.push(`Matching Availability: ${user1.availability}`);
-    } else if (user1.availability === 'flexible' || user2.availability === 'flexible') {
-      availabilityScore = 80;
     } else {
       availabilityScore = 40;
     }

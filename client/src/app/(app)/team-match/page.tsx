@@ -56,6 +56,9 @@ export default function TeamMatchPage() {
   const [verificationModalOpen, setVerificationModalOpen] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<Teammate | null>(null);
 
+  const [projectsList, setProjectsList] = useState<{ id: string; name: string; category?: string; tech?: string[] }[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+
   const [filters, setFilters] = useState({
     skills: '',
     interests: '',
@@ -66,9 +69,27 @@ export default function TeamMatchPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
+      fetchUserProjects();
       fetchMatchedTeammates();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, selectedProjectId]);
+
+  const fetchUserProjects = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
+      const res = await fetch(`${backendUrl}/api/projects`, { credentials: 'include', headers });
+      if (res.ok) {
+        const data = await res.json();
+        setProjectsList(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user projects:', err);
+    }
+  };
 
   const fetchMatchedTeammates = async () => {
     try {
@@ -81,6 +102,7 @@ export default function TeamMatchPage() {
         role: filters.role,
         availability: filters.availability,
         minScore: filters.minScore,
+        projectId: selectedProjectId,
         limit: '12'
       }).toString();
 
@@ -196,9 +218,29 @@ export default function TeamMatchPage() {
       
       <Card className="mb-6 bg-slate-950/70 border-slate-800 backdrop-blur-md">
         <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-indigo-400" />
-            <CardTitle className="text-lg">Smart Filter Controls</CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-indigo-400" />
+              <CardTitle className="text-lg">Smart Filter Controls</CardTitle>
+            </div>
+            {projectsList.length > 0 && (
+              <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-500/40 px-3 py-1.5 rounded-lg">
+                <Sparkles className="h-4 w-4 text-indigo-400 animate-pulse" />
+                <span className="text-xs text-indigo-200 font-medium">Auto-Suggest Teammates For:</span>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="p-1 rounded bg-slate-900 border border-slate-700 text-indigo-200 text-xs font-semibold focus:outline-none cursor-pointer"
+                >
+                  <option value="">All General Candidates</option>
+                  {projectsList.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      🎯 {p.name} {p.tech && p.tech.length > 0 ? `(${p.tech.join(', ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
