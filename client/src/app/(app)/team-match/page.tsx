@@ -43,6 +43,7 @@ interface Teammate {
   matchScore: number;
   matchFactors?: MatchFactors;
   highlights?: string[];
+  inviteStatus?: string | null;
   verification?: VerificationInfo | null;
 }
 
@@ -163,14 +164,22 @@ export default function TeamMatchPage() {
         credentials: 'include',
       });
 
+      const resData = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error('Failed to send invite');
+        if (response.status === 400 && resData.error && resData.error.includes('already sent')) {
+          setTeammates(prev => prev.map(t => t.id === teammateId ? { ...t, inviteStatus: 'pending' } : t));
+          toast.info('Invite already sent to this user');
+          return;
+        }
+        throw new Error(resData.error || 'Failed to send invite');
       }
 
+      setTeammates(prev => prev.map(t => t.id === teammateId ? { ...t, inviteStatus: 'pending' } : t));
       toast.success('Invite sent successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending invite:', error);
-      toast.error('Failed to send invite');
+      toast.error(error.message || 'Failed to send invite');
     }
   };
 
@@ -426,13 +435,31 @@ export default function TeamMatchPage() {
                     {isVerified ? 'Skillset Verified' : 'Verify Skillset'}
                   </Button>
 
-                  <RainbowButton 
-                    className="w-full text-xs h-9"
-                    onClick={() => handleInvite(teammate.id)}
-                  >
-                    <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                    Invite to Project
-                  </RainbowButton>
+                  {teammate.inviteStatus === 'pending' ? (
+                    <Button 
+                      disabled 
+                      className="w-full text-xs h-9 bg-slate-800 text-indigo-300 border border-indigo-700/60 cursor-not-allowed opacity-90"
+                    >
+                      <CheckCircle2 className="mr-1.5 h-3.5 w-3.5 text-indigo-400" />
+                      Invite Sent (Pending)
+                    </Button>
+                  ) : teammate.inviteStatus === 'accepted' ? (
+                    <Button 
+                      disabled 
+                      className="w-full text-xs h-9 bg-emerald-950 text-emerald-300 border border-emerald-800 cursor-not-allowed"
+                    >
+                      <CheckCircle2 className="mr-1.5 h-3.5 w-3.5 text-emerald-400" />
+                      Teammate Joined
+                    </Button>
+                  ) : (
+                    <RainbowButton 
+                      className="w-full text-xs h-9"
+                      onClick={() => handleInvite(teammate.id)}
+                    >
+                      <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                      Invite to Project
+                    </RainbowButton>
+                  )}
                 </CardFooter>
               </Card>
             );

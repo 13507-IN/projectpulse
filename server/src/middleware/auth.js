@@ -65,7 +65,12 @@ export const authenticateToken = async (req, res, next) => {
 
         // 4. Fast DB lookup for user matching this token
         let dbUser = await prisma.user.findFirst({
-            where: { githubAccessToken: token }
+            where: {
+                OR: [
+                    { githubAccessToken: token },
+                    { googleAccessToken: token }
+                ]
+            }
         });
 
         if (dbUser) {

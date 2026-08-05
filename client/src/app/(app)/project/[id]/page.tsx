@@ -309,13 +309,21 @@ export default function DynamicProjectWorkspace() {
         }),
       });
 
+      const resData = await res.json().catch(() => ({}));
+
       if (res.ok) {
+        setRecommendedTeammates(prev => prev.map(c => c.id === teammateId ? { ...c, inviteStatus: 'pending' } : c));
         toast.success('Project invite sent!');
       } else {
-        toast.error('Failed to send project invite');
+        if (res.status === 400 && resData.error && resData.error.includes('already sent')) {
+          setRecommendedTeammates(prev => prev.map(c => c.id === teammateId ? { ...c, inviteStatus: 'pending' } : c));
+          toast.info('Invite already sent to this user');
+          return;
+        }
+        toast.error(resData.error || 'Failed to send project invite');
       }
-    } catch (err) {
-      toast.error('Error sending project invite');
+    } catch (err: any) {
+      toast.error(err.message || 'Error sending project invite');
     }
   };
 

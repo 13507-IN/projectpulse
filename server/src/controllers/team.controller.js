@@ -103,7 +103,20 @@ export const getMatchedTeammates = async (req, res) => {
       },
     });
 
-    // Map candidate users with rich match calculations and verification status
+    // Fetch existing team invites sent by current user
+    const existingInvites = await prisma.teamInvite.findMany({
+      where: {
+        senderId: userId,
+      },
+      select: {
+        id: true,
+        receiverId: true,
+        projectId: true,
+        status: true,
+      },
+    });
+
+    // Map candidate users with rich match calculations, verification status, and invite status
     let matchedTeammates = candidateUsers.map(user => {
       const matchDetails = calculateMatchDetails(currentUser, user, targetProject);
       
@@ -113,11 +126,17 @@ export const getMatchedTeammates = async (req, res) => {
         (v.user2Id === userId && v.user1Id === user.id)
       );
 
+      // Find invite record with this user if exists
+      const invite = existingInvites.find(i => 
+        i.receiverId === user.id && (!targetProject || i.projectId === targetProject.id)
+      );
+
       return {
         ...user,
         matchScore: matchDetails.score,
         matchFactors: matchDetails.factors,
         highlights: matchDetails.highlights,
+        inviteStatus: invite ? invite.status : null,
         verification: verif ? {
           id: verif.id,
           overallStatus: verif.overallStatus,

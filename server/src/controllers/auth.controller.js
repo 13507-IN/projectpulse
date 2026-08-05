@@ -109,8 +109,45 @@ export const githubCallback = async (req, res) => {
         });
 
         req.session.userId = user.id;
+        
         req.session.save(err => {
             if (err) console.error('Session save error:', err);
+
+            const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+            
+            // Set 30-day persistent user cookie
+            res.cookie('user', JSON.stringify({
+                id: user.id,
+                login: user.githubUsername,
+                name: user.name,
+                email: user.email,
+                avatar_url: user.avatarUrl,
+                role: user.role
+            }), {
+                httpOnly: false,
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
+                maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+                path: '/'
+            });
+
+            // Set 30-day persistent token cookies
+            res.cookie('token', accessToken, {
+                httpOnly: true,
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
+                path: '/',
+                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            });
+
+            res.cookie('github_token', accessToken, {
+                httpOnly: true,
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
+                path: '/',
+                maxAge: 30 * 24 * 60 * 60 * 1000
+            });
+
             const redirectUrl = `${frontendUrl}/dashboard?auth=success&token=${accessToken}`;
             res.redirect(redirectUrl);
         });
@@ -239,6 +276,31 @@ export const googleCallback = async (req, res) => {
         req.session.userId = user.id;
         req.session.save(err => {
             if (err) console.error('Session save error:', err);
+
+            const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+            
+            res.cookie('user', JSON.stringify({
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                avatar_url: user.avatarUrl,
+                role: user.role
+            }), {
+                httpOnly: false,
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
+                maxAge: 30 * 24 * 60 * 60 * 1000,
+                path: '/'
+            });
+
+            res.cookie('token', accessToken, {
+                httpOnly: true,
+                sameSite: isProd ? 'none' : 'lax',
+                secure: isProd,
+                path: '/',
+                maxAge: 30 * 24 * 60 * 60 * 1000
+            });
+
             const redirectUrl = `${frontendUrl}/dashboard?auth=success&token=${accessToken}`;
             res.redirect(redirectUrl);
         });
