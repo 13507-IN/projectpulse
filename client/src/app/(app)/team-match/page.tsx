@@ -116,7 +116,6 @@ export default function TeamMatchPage() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Cache-Control': 'no-cache',
       };
       if (storedToken) {
         headers['Authorization'] = `Bearer ${storedToken}`;
