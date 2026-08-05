@@ -101,8 +101,9 @@ export default function InvitesPage() {
     }
   };
 
-  const receivedInvites = invites.filter(i => i.receiverId === user?.id || i.receiver?.id === user?.id);
-  const sentInvites = invites.filter(i => i.senderId === user?.id || i.sender?.id === user?.id);
+  const currentUserId = user?.id ? String(user.id) : '';
+  const receivedInvites = invites.filter(i => String(i.receiverId) === currentUserId || (i.receiver?.id && String(i.receiver.id) === currentUserId));
+  const sentInvites = invites.filter(i => String(i.senderId) === currentUserId || (i.sender?.id && String(i.sender.id) === currentUserId));
   const displayedInvites = filter === 'received' ? receivedInvites : sentInvites;
 
   return (
