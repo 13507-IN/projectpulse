@@ -49,33 +49,33 @@ export const getMatchedTeammates = async (req, res) => {
       id: { not: userId },
     };
 
-    if (skills && typeof skills === 'string' && skills.trim()) {
+    if (skills && typeof skills === 'string' && skills.trim() && !['all', 'any', 'undefined'].includes(skills.trim().toLowerCase())) {
       const skillList = skills.split(',').map(s => s.trim()).filter(Boolean);
       if (skillList.length > 0) {
         where.skills = { hasSome: skillList };
       }
     }
 
-    if (interests && typeof interests === 'string' && interests.trim()) {
+    if (interests && typeof interests === 'string' && interests.trim() && !['all', 'any', 'undefined'].includes(interests.trim().toLowerCase())) {
       const interestList = interests.split(',').map(i => i.trim()).filter(Boolean);
       if (interestList.length > 0) {
         where.interests = { hasSome: interestList };
       }
     }
 
-    if (role && typeof role === 'string' && role.trim()) {
+    if (role && typeof role === 'string' && role.trim() && !['all', 'any', 'undefined'].includes(role.trim().toLowerCase())) {
       where.role = { contains: role.trim().replace('-', ' '), mode: 'insensitive' };
     }
 
-    if (availability && typeof availability === 'string' && availability.trim()) {
+    if (availability && typeof availability === 'string' && availability.trim() && !['all', 'any', 'undefined'].includes(availability.trim().toLowerCase())) {
       where.availability = availability.trim();
     }
 
-    if (experience && typeof experience === 'string' && experience.trim()) {
+    if (experience && typeof experience === 'string' && experience.trim() && !['all', 'any', 'undefined'].includes(experience.trim().toLowerCase())) {
       where.experience = experience.trim();
     }
 
-    const candidateUsers = await prisma.user.findMany({
+    let candidateUsers = await prisma.user.findMany({
       where,
       select: {
         id: true,
@@ -92,6 +92,27 @@ export const getMatchedTeammates = async (req, res) => {
       },
       take: parseInt(limit) * 2,
     });
+
+    // Fallback: If no candidate users match strict filters, load general candidates
+    if (candidateUsers.length === 0) {
+      candidateUsers = await prisma.user.findMany({
+        where: { id: { not: userId } },
+        select: {
+          id: true,
+          name: true,
+          githubUsername: true,
+          avatarUrl: true,
+          role: true,
+          skills: true,
+          interests: true,
+          availability: true,
+          experience: true,
+          bio: true,
+          embedding: true,
+        },
+        take: parseInt(limit) * 2,
+      });
+    }
 
     // Fetch existing verifications involving current user
     const verifications = await prisma.partnerVerification.findMany({
@@ -149,9 +170,12 @@ export const getMatchedTeammates = async (req, res) => {
     });
 
     // Apply minimum score filter if requested
-    if (minScore) {
+    if (minScore && minScore !== '0' && minScore !== 'all' && !isNaN(parseInt(minScore))) {
       const scoreCutoff = parseInt(minScore);
-      matchedTeammates = matchedTeammates.filter(t => t.matchScore >= scoreCutoff);
+      const filtered = matchedTeammates.filter(t => t.matchScore >= scoreCutoff);
+      if (filtered.length > 0) {
+        matchedTeammates = filtered;
+      }
     }
 
     // Sort by match score descending and apply limit
