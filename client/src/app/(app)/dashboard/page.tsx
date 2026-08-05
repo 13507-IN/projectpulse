@@ -109,6 +109,30 @@ export default function Dashboard() {
   });
   const { user, loading, checkAuth, logout } = useAuth();
 
+  const [pendingInvitesCount, setPendingInvitesCount] = useState(0);
+
+  const fetchPendingInvites = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
+      const res = await fetch(`${backendUrl}/api/team/invites?status=pending`, {
+        headers,
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const receivedPending = data.filter(i => i.receiverId === user?.id || i.receiver?.id === user?.id);
+          setPendingInvitesCount(receivedPending.length);
+        }
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
     // Check auth status when component mounts
     const urlParams = new URLSearchParams(window.location.search);
@@ -117,7 +141,8 @@ export default function Dashboard() {
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [checkAuth]);
+    fetchPendingInvites();
+  }, [checkAuth, user?.id]);
 
   const fetchStats = async () => {
     try {
@@ -326,7 +351,31 @@ export default function Dashboard() {
                 </Button>
               </div>
             )}
-            <Dialog open={open} onOpenChange={setOpen}>
+          </div>
+        </div>
+
+        {pendingInvitesCount > 0 && (
+          <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-slate-950 border border-indigo-700/60 p-4 rounded-xl flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-indigo-900/60 border border-indigo-700 flex items-center justify-center text-indigo-300">
+                <PlusCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  You have {pendingInvitesCount} pending team invitation{pendingInvitesCount > 1 ? 's' : ''}!
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Collaborators have invited you to join their project workspaces.
+                </p>
+              </div>
+            </div>
+            <Link href="/invites">
+              <RainbowButton className="text-xs h-8 px-4">
+                View Invitations &rarr;
+              </RainbowButton>
+            </Link>
+          </div>
+        )}  <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
                 <RainbowButton>
                   <PlusCircle className="h-3.5 w-3.5" />

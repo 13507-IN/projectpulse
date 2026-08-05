@@ -31,6 +31,11 @@ export default function AppLayout({
           ariaLabel: 'AI Teammate Matching',
         },
         {
+          label: 'Invitations',
+          href: '/invites',
+          ariaLabel: 'Project Invitations',
+        },
+        {
           label: 'Project Workspace',
           href: '/project/1',
           ariaLabel: 'Project Workspace',
