@@ -14,12 +14,35 @@ export const getMatchedTeammates = async (req, res) => {
 
     // Fetch target project details if matching for a specific project
     let targetProject = null;
+    const excludedUserIds = new Set([userId]);
+
     if (projectId && typeof projectId === 'string' && projectId.trim()) {
       targetProject = await prisma.project.findUnique({
         where: { id: projectId.trim() },
-        select: { id: true, name: true, category: true, tech: true },
+        select: { 
+          id: true, 
+          name: true, 
+          category: true, 
+          tech: true,
+          ownerId: true,
+          members: {
+            select: {
+              userId: true
+            }
+          }
+        },
       });
+
+      if (targetProject) {
+        excludedUserIds.add(targetProject.ownerId);
+        if (targetProject.members) {
+          targetProject.members.forEach(member => {
+            excludedUserIds.add(member.userId);
+          });
+        }
+      }
     }
+    const excludedList = Array.from(excludedUserIds);
 
     // Get current user with necessary fields
     const currentUser = await prisma.user.findUnique({
@@ -50,9 +73,9 @@ export const getMatchedTeammates = async (req, res) => {
       role: 'Developer'
     };
 
-    // Build flexible query for candidate users (excluding current logged in user)
+    // Build flexible query for candidate users (excluding current user and existing project members/owner)
     const where = {
-      id: { not: userId },
+      id: { notIn: excludedList },
     };
 
     if (skills && typeof skills === 'string' && skills.trim() && !['all', 'any', 'undefined'].includes(skills.trim().toLowerCase())) {
@@ -102,7 +125,7 @@ export const getMatchedTeammates = async (req, res) => {
     // Fallback: If no candidate users match strict filters, load general candidates
     if (candidateUsers.length === 0) {
       candidateUsers = await prisma.user.findMany({
-        where: { id: { not: userId } },
+        where: { id: { notIn: excludedList } },
         select: {
           id: true,
           name: true,
