@@ -796,3 +796,28 @@ export const getVerificationStatus = async (req, res) => {
   }
 };
 
+// Get all verification sessions for the current user
+export const getVerifications = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const verifications = await prisma.partnerVerification.findMany({
+      where: {
+        OR: [
+          { user1Id: userId },
+          { user2Id: userId }
+        ],
+      },
+      include: {
+        user1: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, role: true, skills: true } },
+        user2: { select: { id: true, name: true, githubUsername: true, avatarUrl: true, role: true, skills: true } }
+      }
+    });
+
+    res.json(verifications);
+  } catch (error) {
+    console.error('Error fetching verifications:', error);
+    res.status(500).json({ error: 'Failed to fetch verifications' });
+  }
+};
+
+

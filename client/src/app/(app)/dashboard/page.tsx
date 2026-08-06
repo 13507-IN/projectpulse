@@ -47,7 +47,9 @@ import {
   ArrowUpRight,
   Github,
   Loader2,
+  ShieldCheck,
 } from 'lucide-react';
+import { SkillVerificationModal } from '@/components/team/skill-verification-modal';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -110,6 +112,35 @@ export default function Dashboard() {
   const { user, loading, checkAuth, logout } = useAuth();
 
   const [pendingInvitesCount, setPendingInvitesCount] = useState(0);
+  const [verifications, setVerifications] = useState<any[]>([]);
+  const [verificationModalOpen, setVerificationModalOpen] = useState(false);
+  const [selectedPartner, setSelectedPartner] = useState<any>(null);
+
+  const fetchVerifications = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+
+      const res = await fetch(`${backendUrl}/api/team/verification`, {
+        headers,
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setVerifications(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch verifications:', e);
+    }
+  };
+
+  const handleVerificationComplete = () => {
+    fetchVerifications();
+    fetchStats();
+  };
 
   const fetchPendingInvites = async () => {
     try {
@@ -238,6 +269,7 @@ export default function Dashboard() {
       fetchRepos();
       fetchStats();
       fetchUserProjects();
+      fetchVerifications();
     }
   }, [user]);
 
@@ -443,6 +475,74 @@ export default function Dashboard() {
             </Dialog>
           </div>
         </div>
+        {/* Pending Skillset Verifications Actions */}
+        {(() => {
+          const currentUserId = user?.id ? String(user.id) : '';
+          const pendingVerificationActions = verifications.filter(v => {
+            if (v.overallStatus !== 'in_progress') return false;
+
+            const isUser1 = String(v.user1Id) === currentUserId;
+            const isUser2 = String(v.user2Id) === currentUserId;
+
+            if (isUser1) {
+              return v.u2Status === 'questions_set' || v.u1Status === 'answered';
+            }
+            if (isUser2) {
+              return v.u1Status === 'questions_set' || v.u2Status === 'answered';
+            }
+            return false;
+          });
+
+          if (pendingVerificationActions.length === 0) return null;
+
+          return (
+            <div className="flex flex-col gap-3 mb-4">
+              {pendingVerificationActions.map((v) => {
+                const isUser1 = String(v.user1Id) === currentUserId;
+                const partner = isUser1 ? v.user2 : v.user1;
+                
+                const needsToAnswer = isUser1 ? v.u2Status === 'questions_set' : v.u1Status === 'questions_set';
+                
+                return (
+                  <div key={v.id} className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-950 border border-emerald-700/55 p-4 rounded-xl flex items-center justify-between shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-emerald-900/60 border border-emerald-700 flex items-center justify-center text-emerald-300">
+                        <ShieldCheck className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">
+                          {needsToAnswer 
+                            ? `Skillset questions from ${partner?.name || 'Partner'}`
+                            : `Skillset responses from ${partner?.name || 'Partner'}`}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          {needsToAnswer 
+                            ? `${partner?.name || 'Partner'} set questions for you. Answer them to verify your technical skills.`
+                            : `${partner?.name || 'Partner'} answered your questions. Review and verify their skillset.`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        setSelectedPartner({
+                          id: partner?.id,
+                          name: partner?.name,
+                          skills: partner?.skills,
+                          role: partner?.role
+                        });
+                        setVerificationModalOpen(true);
+                      }}
+                      className="text-xs h-8 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-all"
+                    >
+                      {needsToAnswer ? 'Answer Questions' : 'Review & Verify'}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {pendingInvitesCount > 0 && (
           <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-slate-950 border border-indigo-700/60 p-4 rounded-xl flex items-center justify-between shadow-lg mb-2">
             <div className="flex items-center gap-3">
@@ -790,6 +890,17 @@ export default function Dashboard() {
           </Card>
         </div>
       </main>
+
+      {/* Skillset Verification Modal */}
+      {user && (
+        <SkillVerificationModal
+          isOpen={verificationModalOpen}
+          onClose={() => setVerificationModalOpen(false)}
+          targetUser={selectedPartner}
+          currentUserId={String(user.id)}
+          onVerificationComplete={handleVerificationComplete}
+        />
+      )}
     </div>
   );
 }
