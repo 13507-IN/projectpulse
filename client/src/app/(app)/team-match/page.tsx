@@ -230,7 +230,7 @@ export default function TeamMatchPage() {
         </div>
       </div>
       
-      <Card className="mb-6 bg-slate-950/70 border-slate-800 backdrop-blur-md">
+      <Card className="mb-6 glass-card border-slate-800/50 rounded-2xl relative z-10">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -333,14 +333,14 @@ export default function TeamMatchPage() {
             const isExpanded = !!expandedTeammates[teammate.id];
 
             return (
-              <Card key={teammate.id} className="flex flex-col h-full bg-slate-950/80 border-slate-800 hover:border-indigo-500/50 transition-all duration-200">
+              <Card key={teammate.id} className="flex flex-col h-full glass-card hover-glow transition-all duration-300">
                 <CardHeader className="items-center relative pb-2">
                   {isVerified && (
                     <Badge className="absolute top-3 right-3 bg-emerald-900/80 text-emerald-300 border-emerald-500/40 flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Verified
                     </Badge>
                   )}
-                  <Avatar className="w-20 h-20 border-2 border-indigo-500/40">
+                  <Avatar className="w-20 h-20 border-2 border-indigo-400/50 shadow-[0_0_15px_rgba(99,102,241,0.3)] ring-2 ring-indigo-500/20 ring-offset-2 ring-offset-slate-950">
                     <AvatarImage 
                       src={teammate.avatarUrl || `https://github.com/${teammate.githubUsername}.png`} 
                       alt={teammate.name}
@@ -391,11 +391,13 @@ export default function TeamMatchPage() {
                       <span className="font-semibold text-slate-300">Match Compatibility</span>
                       <span className="font-bold text-indigo-400">{teammate.matchScore}%</span>
                     </div>
-                    <div className="w-full bg-slate-900 rounded-full h-2 mt-1 overflow-hidden">
+                    <div className="w-full bg-slate-900/50 rounded-full h-2 mt-1 overflow-hidden ring-1 ring-inset ring-slate-800/50">
                       <div 
-                        className="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 h-2 rounded-full transition-all duration-500" 
+                        className="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 h-2 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(99,102,241,0.6)] relative overflow-hidden" 
                         style={{ width: `${teammate.matchScore}%` }}
-                      />
+                      >
+                        <div className="absolute inset-0 bg-white/20 w-full h-full animate-[marquee-horizontal_2s_linear_infinite]" style={{'--duration': '2s'} as any}></div>
+                      </div>
                     </div>
 
                     <button

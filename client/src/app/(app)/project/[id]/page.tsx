@@ -95,14 +95,14 @@ const TaskCard = ({
   const taskType = (task.type || 'feature') as TaskStatus;
 
   return (
-    <Card className="mb-4 bg-slate-900/90 border-slate-800 hover:border-indigo-500/40 transition-all">
+    <Card className="mb-4 glass-card hover-glow border-none transition-all duration-300 group cursor-grab">
       <CardContent className="p-4">
         <div className="flex justify-between items-start">
-          <p className="font-medium pr-2 text-slate-100 text-sm">{task.title}</p>
+          <p className="font-bold pr-2 text-slate-100 text-sm group-hover:text-indigo-300 transition-colors">{task.title}</p>
           <MoreVertical className="h-4 w-4 text-slate-400 cursor-pointer shrink-0" />
         </div>
         {task.description && (
-          <p className="text-xs text-slate-400 mt-1 line-clamp-2">{task.description}</p>
+          <p className="text-[11px] text-slate-400/80 mt-1.5 line-clamp-2 font-medium">{task.description}</p>
         )}
         <div className="flex justify-between items-center mt-4 pt-2 border-t border-slate-800/80">
           <Badge
@@ -118,7 +118,7 @@ const TaskCard = ({
             {taskType}
           </Badge>
           {task.assignee ? (
-            <Avatar className="h-6 w-6 border border-slate-700">
+            <Avatar className="h-6 w-6 ring-2 ring-indigo-500/30 ring-offset-1 ring-offset-slate-900">
               <AvatarImage src={task.assignee.avatarUrl} alt={task.assignee.name} />
               <AvatarFallback className="text-[10px]">{task.assignee.name?.substring(0, 2).toUpperCase() || 'U'}</AvatarFallback>
             </Avatar>
@@ -422,7 +422,7 @@ export default function DynamicProjectWorkspace() {
         </Link>
       </div>
 
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-800 backdrop-blur-md">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 glass-card p-6 rounded-3xl border-none">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-100">{project.name}</h1>
@@ -475,7 +475,8 @@ export default function DynamicProjectWorkspace() {
 
       {/* AI Suggested Teammates Section */}
       {recommendedTeammates.length > 0 && (
-        <Card className="mb-6 bg-slate-950/70 border-slate-800 backdrop-blur-md">
+        <Card className="mb-6 glass-card border-indigo-500/20 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full filter blur-3xl -z-10 translate-x-1/2 -translate-y-1/2"></div>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -500,7 +501,7 @@ export default function DynamicProjectWorkspace() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {recommendedTeammates.map((candidate) => (
-                <Card key={candidate.id} className="bg-slate-900/90 border-slate-800 hover:border-indigo-500/50 transition-all flex flex-col justify-between">
+                <Card key={candidate.id} className="glass-card hover-glow border-none transition-all flex flex-col justify-between group">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
@@ -569,7 +570,7 @@ export default function DynamicProjectWorkspace() {
           );
 
           return (
-            <div key={colName} className="flex flex-col w-full bg-slate-950/70 border border-slate-800 rounded-xl p-4 backdrop-blur-sm min-h-[400px]">
+            <div key={colName} className="flex flex-col w-full glass rounded-2xl p-4 min-h-[400px] border border-slate-800/40 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]">
               <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800/80">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-slate-200 text-sm">{colName}</h2>

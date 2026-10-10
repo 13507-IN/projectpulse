@@ -118,9 +118,10 @@ export default function ProfilePage() {
       <div className="flex flex-col md:flex-row items-start gap-8">
         {/* Left Column */}
         <div className="w-full md:w-1/3">
-          <Card>
+          <Card className="glass-card border-none relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full filter blur-3xl -z-10 translate-x-1/2 -translate-y-1/2"></div>
             <CardContent className="pt-6 flex flex-col items-center text-center">
-              <Avatar className="w-28 h-28 mb-4 border-4 border-muted">
+              <Avatar className="w-28 h-28 mb-4 ring-4 ring-indigo-500/30 ring-offset-4 ring-offset-slate-950 shadow-[0_0_30px_rgba(99,102,241,0.4)]">
                 <AvatarImage src={displayUser.avatar} />
                 <AvatarFallback>{displayUser.name.charAt(0)}</AvatarFallback>
               </Avatar>
@@ -154,7 +155,7 @@ export default function ProfilePage() {
 
         {/* Right Column */}
         <div className="w-full md:w-2/3 space-y-6">
-          <Card>
+          <Card className="glass-card border-none">
             <CardHeader>
               <CardTitle>Skills & Interests</CardTitle>
               <CardDescription>A collection of skills and professional interests.</CardDescription>
@@ -168,70 +169,74 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="glass-card border-none">
             <CardHeader>
               <CardTitle>Current Projects</CardTitle>
               <CardDescription>Projects where {displayUser.name.split(' ')[0]} is an active member.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {reposLoading ? (
-                <div className="text-center py-4">
-                  <p className="text-muted-foreground">Loading GitHub repositories...</p>
-                </div>
-              ) : user && repos.length > 0 ? (
-                repos.map((repo: GitHubRepo) => (
-                  <div key={repo.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div>
-                      <h3 className="font-semibold">{repo.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {repo.description || "No description available"}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {repo.language && (
-                          <Badge variant="outline" className="text-xs">
-                            {repo.language}
+            <CardContent>
+              <div className={user && repos.length > 0 ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "space-y-4"}>
+                {reposLoading ? (
+                  <div className="text-center py-4 md:col-span-2">
+                    <p className="text-muted-foreground">Loading GitHub repositories...</p>
+                  </div>
+                ) : user && repos.length > 0 ? (
+                  repos.map((repo: GitHubRepo) => (
+                    <div key={repo.id} className="flex flex-col justify-between p-4 glass hover-glow border-slate-800/50 rounded-xl transition-all h-full">
+                      <div className="mb-4">
+                        <h3 className="font-bold text-slate-100">{repo.name}</h3>
+                        <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                          {repo.description || "No description available"}
+                        </p>
+                        <div className="flex items-center gap-2 mt-3">
+                          {repo.language && (
+                            <Badge variant="outline" className="text-[10px] border-indigo-500/30 text-indigo-300">
+                              {repo.language}
+                            </Badge>
+                          )}
+                          <Badge variant={repo.private ? "secondary" : "outline"} className="text-[10px]">
+                            {repo.private ? "Private" : "Public"}
                           </Badge>
-                        )}
-                        <Badge variant={repo.private ? "secondary" : "outline"} className="text-xs">
-                          {repo.private ? "Private" : "Public"}
-                        </Badge>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button 
+                          onClick={() => window.open(repo.html_url, '_blank')}
+                          className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700"
+                          title="View on GitHub"
+                        >
+                          <Github className="h-3.5 w-3.5 mr-1.5" /> Repo
+                        </button>
+                        <Link href={`/project/${repo.id}`}>
+                          <button className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 hover:bg-indigo-500 text-white transition-colors shadow-[0_0_10px_rgba(79,70,229,0.3)]">
+                            <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> Open
+                          </button>
+                        </Link>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => window.open(repo.html_url, '_blank')}
-                        className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
-                        title="View on GitHub"
-                      >
-                        <Github className="h-4 w-4" />
-                      </button>
-                      <Link href="/project/1">
-                        <button className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                          <ArrowUpRight className="h-4 w-4" />
-                        </button>
-                      </Link>
-                    </div>
+                  ))
+                ) : user ? (
+                  <div className="text-center py-4 md:col-span-2">
+                    <p className="text-muted-foreground">No active repositories found.</p>
                   </div>
-                ))
-              ) : user ? (
-                <div className="text-center py-4">
-                  <p className="text-muted-foreground">No active repositories found.</p>
-                </div>
-              ) : (
-                fallbackProjects.map((project) => (
-                  <div key={project.name} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div>
-                      <h3 className="font-semibold">{project.name}</h3>
-                      <p className="text-sm text-muted-foreground">{project.description}</p>
+                ) : (
+                  fallbackProjects.map((project) => (
+                    <div key={project.name} className="flex flex-col justify-between p-4 glass hover-glow border-slate-800/50 rounded-xl transition-all h-full">
+                      <div className="mb-4">
+                        <h3 className="font-bold text-slate-100">{project.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-1">{project.description}</p>
+                      </div>
+                      <div className="flex justify-end">
+                        <Link href="/project/1">
+                          <RainbowButton className="h-8 px-4 text-xs">
+                            <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> View Project
+                          </RainbowButton>
+                        </Link>
+                      </div>
                     </div>
-                    <Link href="/project/1">
-                      <RainbowButton>
-                        <ArrowUpRight className="h-4 w-4" />
-                      </RainbowButton>
-                    </Link>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

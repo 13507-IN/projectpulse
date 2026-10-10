@@ -73,16 +73,16 @@ export const generateUserEmbedding = async (user) => {
 
 // Role Synergy Complementarity Mapping
 const ROLE_SYNERGY_MAP = {
-  'frontend': ['backend', 'ui-ux', 'fullstack', 'mobile-dev', 'developer'],
-  'backend': ['frontend', 'devops', 'fullstack', 'data-scientist', 'developer'],
-  'fullstack': ['frontend', 'backend', 'ui-ux', 'devops', 'ai-engineer', 'developer'],
-  'ui-ux': ['frontend', 'fullstack', 'product-manager', 'developer'],
-  'ai-engineer': ['data-scientist', 'backend', 'fullstack', 'developer'],
+  'frontend': ['backend', 'ui-ux', 'fullstack', 'mobile-dev', 'developer', 'devops'],
+  'backend': ['frontend', 'devops', 'fullstack', 'data-scientist', 'developer', 'ai-engineer'],
+  'fullstack': ['frontend', 'backend', 'ui-ux', 'devops', 'ai-engineer', 'developer', 'data-scientist', 'mobile-dev'],
+  'ui-ux': ['frontend', 'fullstack', 'product-manager', 'developer', 'mobile-dev'],
+  'ai-engineer': ['data-scientist', 'backend', 'fullstack', 'developer', 'devops'],
   'data-scientist': ['ai-engineer', 'backend', 'fullstack', 'developer'],
-  'devops': ['backend', 'fullstack', 'ai-engineer', 'developer'],
-  'mobile-dev': ['backend', 'ui-ux', 'fullstack', 'developer'],
-  'product-manager': ['ui-ux', 'fullstack', 'frontend', 'developer'],
-  'developer': ['frontend', 'backend', 'fullstack', 'ui-ux', 'ai-engineer']
+  'devops': ['backend', 'fullstack', 'ai-engineer', 'developer', 'frontend'],
+  'mobile-dev': ['backend', 'ui-ux', 'fullstack', 'developer', 'frontend'],
+  'product-manager': ['ui-ux', 'fullstack', 'frontend', 'developer', 'backend'],
+  'developer': ['frontend', 'backend', 'fullstack', 'ui-ux', 'ai-engineer', 'mobile-dev', 'devops']
 };
 
 // Comprehensive Multi-Factor Partner Matching Calculation
@@ -168,11 +168,13 @@ export const calculateMatchDetails = (user1, user2, targetProject = null) => {
     if (user1.availability === user2.availability) {
       availabilityScore = 95;
       highlights.push(`Matching Availability: ${user1.availability}`);
-    } else if (user1.availability === 'flexible' || user2.availability === 'flexible') {
+    } else if (user1.availability.toLowerCase() === 'flexible' || user2.availability.toLowerCase() === 'flexible') {
       availabilityScore = 80;
     } else {
-      availabilityScore = 40;
+      availabilityScore = 20; // Stricter penalty for mismatch
     }
+  } else {
+    availabilityScore = 50;
   }
 
   if (user1.experience && user2.experience) {
@@ -191,8 +193,8 @@ export const calculateMatchDetails = (user1, user2, targetProject = null) => {
   // Overall Score Calculation
   let totalScore = Math.round(
     (roleSynergyScore * 0.25) +
-    (skillScore * 0.35) +
-    (interestScore * 0.20) +
+    (skillScore * 0.40) +
+    (interestScore * 0.15) +
     (((availabilityScore + experienceScore) / 2) * 0.20)
   );
 
