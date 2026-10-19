@@ -1,9 +1,7 @@
 
 'use client';
 
-import { useRef } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { useRef, useState } from 'react';
 import { RainbowButton } from '@/components/magicui/rainbow-button';
 import {
   Card,
@@ -33,6 +31,7 @@ import {
 } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { FileDown } from 'lucide-react';
+import { toast } from 'sonner';
 
 const aggregatedData = [
   { category: 'Communication', score: 8.5, fill: 'var(--color-communication)' },
@@ -65,30 +64,37 @@ const chartConfig = {
 
 export default function PeerReviewPage() {
   const reviewChartRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     const input = reviewChartRef.current;
-    if (input) {
-      html2canvas(input, { scale: 2 }).then((canvas) => {
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'px', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        const ratio = canvasWidth / canvasHeight;
-        const width = pdfWidth - 20;
-        const height = width / ratio;
-        
-        let y = 10;
-        if (height > pdfHeight) {
-          y = 0;
-        }
+    if (!input || exporting) return;
 
-        pdf.text('Aggregated Review Summary', pdfWidth/2, y + 15, { align: 'center'});
-        pdf.addImage(imgData, 'PNG', 10, y + 30, width, height);
-        pdf.save('review-summary.pdf');
-      });
+    setExporting(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+      const canvas = await html2canvas(input, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'px', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const ratio = canvas.width / canvas.height;
+      const width = pdfWidth - 20;
+      const height = width / ratio;
+      const y = height > pdfHeight ? 0 : 10;
+
+      pdf.text('Aggregated Review Summary', pdfWidth / 2, y + 15, { align: 'center' });
+      pdf.addImage(imgData, 'PNG', 10, y + 30, width, height);
+      pdf.save('review-summary.pdf');
+      toast.success('Review summary downloaded');
+    } catch (error) {
+      console.error('Failed to export review summary:', error);
+      toast.error('Could not export the review summary. Please try again.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -162,9 +168,9 @@ export default function PeerReviewPage() {
                 Summary of the feedback you've received from your team.
               </CardDescription>
             </div>
-            <RainbowButton onClick={handleDownloadPdf}>
+            <RainbowButton onClick={handleDownloadPdf} disabled={exporting}>
               <FileDown className="mr-2 h-4 w-4" />
-              Download Summary
+              {exporting ? 'Preparing summary…' : 'Download Summary'}
             </RainbowButton>
           </div>
         </CardHeader>

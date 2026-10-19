@@ -1,9 +1,7 @@
 
 'use client';
 
-import { useRef } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { useRef, useState } from 'react';
 import { RainbowButton } from '@/components/magicui/rainbow-button';
 import {
   Card,
@@ -13,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { FileDown } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   BarChart,
   Line,
@@ -86,30 +85,37 @@ const chartConfig = {
 
 export default function AnalyticsPage() {
   const reportRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     const input = reportRef.current;
-    if (input) {
-      html2canvas(input, { scale: 2 }).then((canvas) => {
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'px', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        const ratio = canvasWidth / canvasHeight;
-        const width = pdfWidth - 20;
-        const height = width / ratio;
-        
-        let y = 10;
-        if (height > pdfHeight) {
-          y = 0;
-        }
+    if (!input || exporting) return;
 
-        pdf.text('Project Analytics Report', pdfWidth/2, y + 15, { align: 'center'});
-        pdf.addImage(imgData, 'PNG', 10, y + 30, width, height);
-        pdf.save('analytics-report.pdf');
-      });
+    setExporting(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+      const canvas = await html2canvas(input, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'px', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const ratio = canvas.width / canvas.height;
+      const width = pdfWidth - 20;
+      const height = width / ratio;
+      const y = height > pdfHeight ? 0 : 10;
+
+      pdf.text('Project Analytics Report', pdfWidth / 2, y + 15, { align: 'center' });
+      pdf.addImage(imgData, 'PNG', 10, y + 30, width, height);
+      pdf.save('analytics-report.pdf');
+      toast.success('Report downloaded');
+    } catch (error) {
+      console.error('Failed to export analytics report:', error);
+      toast.error('Could not export the report. Please try again.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -122,9 +128,9 @@ export default function AnalyticsPage() {
             Visualize your team's performance and project progress.
           </p>
         </div>
-        <RainbowButton onClick={handleExportPdf}>
+        <RainbowButton onClick={handleExportPdf} disabled={exporting}>
           <FileDown className="mr-2 h-4 w-4" />
-          Export Report
+          {exporting ? 'Preparing report…' : 'Export Report'}
         </RainbowButton>
       </div>
 

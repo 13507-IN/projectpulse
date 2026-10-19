@@ -99,6 +99,11 @@ export default function Dashboard() {
     selectedRepo: '',
     category: 'Web Development',
     tech: '',
+    location: '',
+    commitment: 'Flexible',
+    lookingFor: '',
+    maxTeamSize: '5',
+    isDiscoverable: true,
   });
 
   const [stats, setStats] = useState<DashboardStats>({
@@ -303,6 +308,11 @@ export default function Dashboard() {
         repoPrivate: chosenRepo ? chosenRepo.private : false,
         category: newProject.category,
         tech: newProject.tech ? newProject.tech.split(',').map(t => t.trim()).filter(Boolean) : (chosenRepo?.language ? [chosenRepo.language] : []),
+        location: newProject.location.trim(),
+        commitment: newProject.commitment,
+        lookingFor: newProject.lookingFor.split(',').map((item) => item.trim()).filter(Boolean),
+        maxTeamSize: newProject.maxTeamSize ? Number(newProject.maxTeamSize) : null,
+        isDiscoverable: newProject.isDiscoverable,
       };
 
       const response = await fetch(`${backendUrl}/api/projects`, {
@@ -320,7 +330,18 @@ export default function Dashboard() {
       const created = await response.json();
       toast.success(`Project "${created.name}" created successfully!`);
       setOpen(false);
-      setNewProject({ name: '', description: '', selectedRepo: '', category: 'Web Development', tech: '' });
+      setNewProject({
+        name: '',
+        description: '',
+        selectedRepo: '',
+        category: 'Web Development',
+        tech: '',
+        location: '',
+        commitment: 'Flexible',
+        lookingFor: '',
+        maxTeamSize: '5',
+        isDiscoverable: true,
+      });
       
       fetchStats();
       fetchRepos();
@@ -393,7 +414,7 @@ export default function Dashboard() {
                   </span>
                 </RainbowButton>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
                 <form onSubmit={handleCreateProject}>
                   <DialogHeader>
                     <DialogTitle>Create a New Project</DialogTitle>
@@ -426,6 +447,63 @@ export default function Dashboard() {
                         value={newProject.tech}
                         onChange={(e) => setNewProject({ ...newProject, tech: e.target.value })}
                       />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="projectLocation">Campus / Location</Label>
+                        <Input
+                          id="projectLocation"
+                          placeholder="e.g. Pune, India · Remote"
+                          value={newProject.location}
+                          onChange={(e) => setNewProject({ ...newProject, location: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="projectCommitment">Time commitment</Label>
+                        <select
+                          id="projectCommitment"
+                          value={newProject.commitment}
+                          onChange={(e) => setNewProject({ ...newProject, commitment: e.target.value })}
+                          className="w-full p-2.5 border rounded-md bg-zinc-900 text-zinc-100 border-zinc-700 text-sm"
+                        >
+                          <option>Flexible</option>
+                          <option>2–4 hours/week</option>
+                          <option>5–8 hours/week</option>
+                          <option>9+ hours/week</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lookingFor">Who are you looking for?</Label>
+                      <Input
+                        id="lookingFor"
+                        placeholder="e.g. UI designer, React developer, ML enthusiast"
+                        value={newProject.lookingFor}
+                        onChange={(e) => setNewProject({ ...newProject, lookingFor: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">Separate roles or skills with commas.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                      <div className="space-y-2">
+                        <Label htmlFor="maxTeamSize">Team size (including you)</Label>
+                        <Input
+                          id="maxTeamSize"
+                          type="number"
+                          min="2"
+                          max="100"
+                          value={newProject.maxTeamSize}
+                          onChange={(e) => setNewProject({ ...newProject, maxTeamSize: e.target.value })}
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 pb-3 text-sm text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={newProject.isDiscoverable}
+                          onChange={(e) => setNewProject({ ...newProject, isDiscoverable: e.target.checked })}
+                          className="h-4 w-4 accent-indigo-500"
+                        />
+                        Show in project discovery
+                      </label>
                     </div>
                     <div className="space-y-2">
                       <Label>Connect to GitHub</Label>

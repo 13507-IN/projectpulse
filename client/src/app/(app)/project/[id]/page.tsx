@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Github, MoreVertical, Plus, Loader2, ArrowLeft, CheckCircle2, AlertTriangle, Layers, Calendar, User } from 'lucide-react';
+import { Github, MoreVertical, Plus, Loader2, ArrowLeft, CheckCircle2, AlertTriangle, Layers, Calendar, User, UserPlus, MessageSquare, CalendarDays, RefreshCw, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,25 +36,12 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { TaskDetailsDialog, type WorkspaceTask } from '@/components/project/task-details-dialog';
 
-type TaskStatus = 'feature' | 'bug' | 'docs';
+type TaskStatus = 'feature' | 'bug' | 'docs' | 'improvement';
 type ColumnName = 'To Do' | 'In Progress' | 'Done';
 
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  assigneeId?: string;
-  assignee?: {
-    id: string;
-    name: string;
-    githubUsername?: string;
-    avatarUrl?: string;
-  };
-  type?: TaskStatus;
-  status?: string;
-  column?: string;
-}
+type Task = WorkspaceTask;
 
 interface ProjectMember {
   id: string;
@@ -73,6 +60,7 @@ interface ProjectData {
   description: string;
   category?: string;
   tech?: string[];
+  isDiscoverable?: boolean;
   githubRepoName?: string;
   githubRepoUrl?: string;
   owner?: {
@@ -88,14 +76,42 @@ interface ProjectData {
 const TaskCard = ({
   task,
   onStatusChange,
+  onOpen,
+  canEdit,
 }: {
   task: Task;
-  onStatusChange?: (taskId: string, newColumn: ColumnName) => void;
+  onStatusChange: (task: Task, newColumn: ColumnName) => void;
+  onOpen: (taskId: string) => void;
+  canEdit: boolean;
 }) => {
   const taskType = (task.type || 'feature') as TaskStatus;
+  const currentColumn: ColumnName =
+    task.column === 'In Progress' || task.status === 'in_progress'
+      ? 'In Progress'
+      : task.column === 'Done' || task.status === 'done'
+        ? 'Done'
+        : 'To Do';
 
   return (
-    <Card className="mb-4 glass-card hover-glow border-none transition-all duration-300 group cursor-grab">
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`Open task ${task.title}`}
+      onClick={() => onOpen(task.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(task.id);
+        }
+      }}
+      draggable={canEdit}
+      onDragStart={(event) => {
+        if (!canEdit) return event.preventDefault();
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', task.id);
+      }}
+      className={`mb-4 glass-card hover-glow border-none transition-all duration-300 group cursor-pointer ${canEdit ? 'active:cursor-grabbing' : ''}`}
+    >
       <CardContent className="p-4">
         <div className="flex justify-between items-start">
           <p className="font-bold pr-2 text-slate-100 text-sm group-hover:text-indigo-300 transition-colors">{task.title}</p>
@@ -104,6 +120,19 @@ const TaskCard = ({
         {task.description && (
           <p className="text-[11px] text-slate-400/80 mt-1.5 line-clamp-2 font-medium">{task.description}</p>
         )}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+          {task.priority === 'high' && <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">High priority</Badge>}
+          {task.dueDate && (
+            <span className="inline-flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" />
+              {new Date(task.dueDate).toLocaleDateString()}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1">
+            <MessageSquare className="h-3 w-3" />
+            {task._count?.comments || 0}
+          </span>
+        </div>
         <div className="flex justify-between items-center mt-4 pt-2 border-t border-slate-800/80">
           <Badge
             variant={
@@ -117,14 +146,29 @@ const TaskCard = ({
           >
             {taskType}
           </Badge>
-          {task.assignee ? (
-            <Avatar className="h-6 w-6 ring-2 ring-indigo-500/30 ring-offset-1 ring-offset-slate-900">
-              <AvatarImage src={task.assignee.avatarUrl} alt={task.assignee.name} />
-              <AvatarFallback className="text-[10px]">{task.assignee.name?.substring(0, 2).toUpperCase() || 'U'}</AvatarFallback>
-            </Avatar>
-          ) : (
-            <span className="text-[10px] text-slate-500">Unassigned</span>
-          )}
+          <div className="flex items-center gap-2">
+            {task.assignee ? (
+              <Avatar className="h-6 w-6 ring-2 ring-indigo-500/30 ring-offset-1 ring-offset-slate-900">
+                <AvatarImage src={task.assignee.avatarUrl || undefined} alt={task.assignee.name || 'Assignee'} />
+                <AvatarFallback className="text-[10px]">{task.assignee.name?.substring(0, 2).toUpperCase() || 'U'}</AvatarFallback>
+              </Avatar>
+            ) : (
+              <span className="text-[10px] text-slate-500">Unassigned</span>
+            )}
+            <select
+              aria-label={`Move ${task.title}`}
+              value={currentColumn}
+              disabled={!canEdit}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+              onChange={(event) => onStatusChange(task, event.target.value as ColumnName)}
+              className="max-w-24 rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-[10px] text-slate-300 outline-none focus:border-indigo-500"
+            >
+              <option value="To Do">To do</option>
+              <option value="In Progress">Doing</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -135,11 +179,13 @@ const AddTaskDialog = ({
   column,
   projectId,
   members,
+  owner,
   onTaskCreated,
 }: {
   column: ColumnName;
   projectId: string;
   members: ProjectMember[];
+  owner?: ProjectData['owner'];
   onTaskCreated: () => void;
 }) => {
   const [open, setOpen] = useState(false);
@@ -147,7 +193,12 @@ const AddTaskDialog = ({
   const [description, setDescription] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [type, setType] = useState<TaskStatus>('feature');
+  const [priority, setPriority] = useState('medium');
+  const [dueDate, setDueDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const people = [owner, ...members.filter((member) => member.role !== 'viewer').map((member) => member.user)]
+    .filter((person): person is NonNullable<typeof person> => Boolean(person))
+    .filter((person, index, all) => all.findIndex((candidate) => candidate.id === person.id) === index);
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -175,6 +226,8 @@ const AddTaskDialog = ({
           column,
           status: dbStatus,
           type,
+          priority,
+          dueDate: dueDate ? new Date(`${dueDate}T00:00:00.000Z`).toISOString() : null,
           assigneeId: assigneeId || undefined,
         }),
       });
@@ -186,6 +239,8 @@ const AddTaskDialog = ({
       setDescription('');
       setAssigneeId('');
       setType('feature');
+      setPriority('medium');
+      setDueDate('');
       onTaskCreated();
     } catch (error) {
       console.error('Task creation error:', error);
@@ -202,7 +257,7 @@ const AddTaskDialog = ({
           <Plus className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="bg-slate-950 text-slate-100 border-slate-800">
+      <DialogContent className="max-h-[90vh] overflow-y-auto bg-slate-950 text-slate-100 border-slate-800">
         <DialogHeader>
           <DialogTitle>Add New Task to {column}</DialogTitle>
         </DialogHeader>
@@ -237,8 +292,46 @@ const AddTaskDialog = ({
                 <SelectItem value="feature">Feature</SelectItem>
                 <SelectItem value="bug">Bug</SelectItem>
                 <SelectItem value="docs">Docs</SelectItem>
+                <SelectItem value="improvement">Improvement</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="taskPriority" className="text-xs">Priority</Label>
+              <select
+                id="taskPriority"
+                value={priority}
+                onChange={(event) => setPriority(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="taskDueDate" className="text-xs">Due date</Label>
+              <Input
+                id="taskDueDate"
+                type="date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+                className="border-slate-700 bg-slate-900 text-slate-200"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="taskAssignee" className="text-xs">Assign to</Label>
+            <select
+              id="taskAssignee"
+              value={assigneeId}
+              onChange={(event) => setAssigneeId(event.target.value)}
+              className="h-10 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200"
+            >
+              <option value="">Unassigned</option>
+              {people.map((person) => <option key={person.id} value={person.id}>{person.name || 'Teammate'}</option>)}
+            </select>
           </div>
         </div>
         <DialogFooter>
@@ -262,6 +355,11 @@ export default function DynamicProjectWorkspace() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
+  const [updatingDiscovery, setUpdatingDiscovery] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskQuery, setTaskQuery] = useState('');
+  const [taskFilter, setTaskFilter] = useState<'all' | 'mine' | 'overdue'>('all');
 
   const [recommendedTeammates, setRecommendedTeammates] = useState<any[]>([]);
 
@@ -269,6 +367,13 @@ export default function DynamicProjectWorkspace() {
     fetchProjectDetails();
     fetchRecommendedTeammates();
   }, [projectId]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && !movingTaskId) refreshTasks();
+    }, 12000);
+    return () => window.clearInterval(interval);
+  }, [projectId, movingTaskId]);
 
   const fetchRecommendedTeammates = async () => {
     try {
@@ -327,6 +432,24 @@ export default function DynamicProjectWorkspace() {
     }
   };
 
+  const refreshTasks = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (storedToken) headers.Authorization = `Bearer ${storedToken}`;
+      const response = await fetch(`${backendUrl}/api/tasks/project/${projectId}`, {
+        credentials: 'include',
+        headers,
+      });
+      if (!response.ok) throw new Error('Could not refresh tasks');
+      const data = await response.json();
+      setTasks(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Task refresh error:', error);
+    }
+  };
+
   const fetchProjectDetails = async () => {
     try {
       setLoading(true);
@@ -335,7 +458,7 @@ export default function DynamicProjectWorkspace() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
 
-      const res = await fetch(`${backendUrl}/api/projects/${projectId}`, {
+      const res = await fetch(`${backendUrl}/api/projects/${projectId}?includeTasks=false`, {
         credentials: 'include',
         headers,
       });
@@ -352,15 +475,7 @@ export default function DynamicProjectWorkspace() {
       const data: ProjectData = await res.json();
       setProject(data);
 
-      // Fetch tasks for this project
-      const tasksRes = await fetch(`${backendUrl}/api/tasks/project/${projectId}`, {
-        credentials: 'include',
-        headers,
-      });
-      if (tasksRes.ok) {
-        const tasksData = await tasksRes.json();
-        setTasks(Array.isArray(tasksData) ? tasksData : []);
-      }
+      await refreshTasks();
     } catch (error) {
       console.error(error);
       toast.error('Could not load project workspace');
@@ -391,6 +506,7 @@ export default function DynamicProjectWorkspace() {
       if (response.ok) {
         const data = await response.json();
         toast.success(`Sync complete: ${data.message || 'GitHub repositories synchronized'}`);
+        await refreshTasks();
       } else {
         toast.error('Sync failed. Please check repository connections.');
       }
@@ -399,6 +515,75 @@ export default function DynamicProjectWorkspace() {
       toast.error('Failed to sync with GitHub.');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const moveTask = async (task: Task, newColumn: ColumnName) => {
+    const statusByColumn: Record<ColumnName, string> = {
+      'To Do': 'todo',
+      'In Progress': 'in_progress',
+      Done: 'done',
+    };
+    const newStatus = statusByColumn[newColumn];
+
+    if (task.column === newColumn && task.status === newStatus) return;
+
+    const previousTasks = tasks;
+    setMovingTaskId(task.id);
+    setTasks((currentTasks) =>
+      currentTasks.map((currentTask) =>
+        currentTask.id === task.id
+          ? { ...currentTask, column: newColumn, status: newStatus }
+          : currentTask
+      )
+    );
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers.Authorization = `Bearer ${storedToken}`;
+
+      const response = await fetch(`${backendUrl}/api/tasks/${task.id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ column: newColumn, status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Could not save task status');
+      toast.success(`Moved "${task.title}" to ${newColumn}`);
+    } catch (error) {
+      console.error('Task move error:', error);
+      setTasks(previousTasks);
+      toast.error('Could not move task. Please try again.');
+    } finally {
+      setMovingTaskId(null);
+    }
+  };
+
+  const toggleDiscovery = async () => {
+    if (!project) return;
+    setUpdatingDiscovery(true);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedToken) headers.Authorization = `Bearer ${storedToken}`;
+      const response = await fetch(`${backendUrl}/api/projects/${projectId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ isDiscoverable: !project.isDiscoverable }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not update discovery settings');
+      setProject((current) => current ? { ...current, isDiscoverable: data.isDiscoverable } : current);
+      toast.success(data.isDiscoverable ? 'Your project is now on the discovery board' : 'Your project is no longer discoverable');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update discovery settings');
+    } finally {
+      setUpdatingDiscovery(false);
     }
   };
 
@@ -413,6 +598,25 @@ export default function DynamicProjectWorkspace() {
   if (!project) return null;
 
   const columns: ColumnName[] = ['To Do', 'In Progress', 'Done'];
+  const isProjectOwner = Boolean(project.owner?.id && user?.id && String(project.owner.id) === String(user.id));
+  const myMembership = project.members?.find((member) => user?.id && String(member.user.id) === String(user.id));
+  const canEditTasks = isProjectOwner || ['owner', 'admin', 'member'].includes(myMembership?.role || '');
+  const canDeleteTasks = isProjectOwner || ['owner', 'admin'].includes(myMembership?.role || '');
+  const people = [project.owner, ...(project.members || [])
+    .filter((member) => member.role !== 'viewer')
+    .map((member) => member.user)]
+    .filter((person): person is NonNullable<typeof person> => Boolean(person))
+    .filter((person, index, all) => all.findIndex((candidate) => candidate.id === person.id) === index);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const normalizedTaskQuery = taskQuery.trim().toLocaleLowerCase();
+  const visibleTasks = tasks.filter((task) => {
+    if (taskFilter === 'mine' && String(task.assigneeId || '') !== String(user?.id || '')) return false;
+    if (taskFilter === 'overdue' &&
+      (!task.dueDate || task.dueDate.slice(0, 10) >= today || task.status === 'done')) return false;
+    if (!normalizedTaskQuery) return true;
+    return `${task.title} ${task.description || ''}`.toLocaleLowerCase().includes(normalizedTaskQuery);
+  });
 
   return (
     <div className="w-full relative px-4 md:px-6 py-4">
@@ -448,6 +652,24 @@ export default function DynamicProjectWorkspace() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 shrink-0">
+          {isProjectOwner && (
+            <>
+              <Button
+                variant="outline"
+                onClick={toggleDiscovery}
+                disabled={updatingDiscovery}
+                className="border-indigo-500/40 bg-indigo-950/30 text-indigo-200 hover:bg-indigo-950/60"
+              >
+                {updatingDiscovery ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {project.isDiscoverable ? 'Take off discovery' : 'Make discoverable'}
+              </Button>
+              <Link href={`/project/${projectId}/applications`}>
+                <Button variant="outline" className="border-indigo-500/40 bg-indigo-950/30 text-indigo-200 hover:bg-indigo-950/60">
+                  <UserPlus className="mr-2 h-4 w-4" /> Review applications
+                </Button>
+              </Link>
+            </>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-medium">Team:</span>
             <div className="flex -space-x-2 overflow-hidden">
@@ -559,10 +781,55 @@ export default function DynamicProjectWorkspace() {
         </Card>
       )}
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-100">Build board</h2>
+          <p className="text-xs text-slate-400">
+            Open a task to assign work, set a deadline, and discuss progress. Teammates see updates within about 12 seconds.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refreshTasks} className="border-slate-700 text-slate-300">
+          <RefreshCw className="mr-2 h-3.5 w-3.5" /> Refresh
+        </Button>
+      </div>
+      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-800/70 bg-slate-900/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-xs">
+          <Label htmlFor="board-task-search" className="sr-only">Search tasks</Label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input
+            id="board-task-search"
+            value={taskQuery}
+            onChange={(event) => setTaskQuery(event.target.value)}
+            placeholder="Search tasks"
+            className="border-slate-700 bg-slate-950 pl-9 text-slate-100"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            ['all', 'All work'],
+            ['mine', 'Assigned to me'],
+            ['overdue', 'Overdue'],
+          ] as const).map(([filter, label]) => (
+            <Button
+              key={filter}
+              type="button"
+              size="sm"
+              variant={taskFilter === filter ? 'secondary' : 'ghost'}
+              aria-pressed={taskFilter === filter}
+              onClick={() => setTaskFilter(filter)}
+              className={taskFilter === filter ? 'bg-indigo-500/20 text-indigo-200 hover:bg-indigo-500/30' : 'text-slate-400 hover:text-slate-100'}
+            >
+              {label}
+            </Button>
+          ))}
+          <span className="ml-1 text-xs text-slate-500">{visibleTasks.length} of {tasks.length}</span>
+        </div>
+      </div>
+
       {/* Kanban Board Columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {columns.map((colName) => {
-          const colTasks = tasks.filter(t => 
+          const colTasks = visibleTasks.filter(t =>
             (t.column === colName) || 
             (!t.column && colName === 'To Do' && t.status === 'todo') ||
             (!t.column && colName === 'In Progress' && t.status === 'in_progress') ||
@@ -570,7 +837,18 @@ export default function DynamicProjectWorkspace() {
           );
 
           return (
-            <div key={colName} className="flex flex-col w-full glass rounded-2xl p-4 min-h-[400px] border border-slate-800/40 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]">
+            <div
+              key={colName}
+              onDragOver={(event) => { if (canEditTasks) event.preventDefault(); }}
+              onDrop={(event) => {
+                if (!canEditTasks) return;
+                event.preventDefault();
+                const taskId = event.dataTransfer.getData('text/plain');
+                const task = tasks.find((item) => item.id === taskId);
+                if (task) moveTask(task, colName);
+              }}
+              className="flex flex-col w-full glass rounded-2xl p-4 min-h-[400px] border border-slate-800/40 shadow-[inset_0_0_20px_rgba(0,0,0,0.2)]"
+            >
               <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800/80">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-slate-200 text-sm">{colName}</h2>
@@ -578,22 +856,34 @@ export default function DynamicProjectWorkspace() {
                     {colTasks.length}
                   </span>
                 </div>
-                <AddTaskDialog 
-                  column={colName} 
-                  projectId={projectId} 
-                  members={project.members || []} 
-                  onTaskCreated={fetchProjectDetails} 
-                />
+                {canEditTasks && (
+                  <AddTaskDialog
+                    column={colName}
+                    projectId={projectId}
+                    members={project.members || []}
+                    owner={project.owner}
+                    onTaskCreated={refreshTasks}
+                  />
+                )}
               </div>
 
               <div className="flex-1 space-y-3">
                 {colTasks.length === 0 ? (
                   <div className="text-center py-10 border border-dashed border-slate-900 rounded-lg">
-                    <p className="text-xs text-slate-500">No tasks in {colName}</p>
+                    <p className="text-xs text-slate-500">
+                      {taskQuery || taskFilter !== 'all' ? 'No matching tasks' : `No tasks in ${colName}`}
+                    </p>
                   </div>
                 ) : (
                   colTasks.map((t) => (
-                    <TaskCard key={t.id} task={t} />
+                    <div key={t.id} className={movingTaskId === t.id ? 'opacity-60 pointer-events-none' : ''}>
+                      <TaskCard
+                        task={t}
+                        onStatusChange={moveTask}
+                        onOpen={setSelectedTaskId}
+                        canEdit={canEditTasks}
+                      />
+                    </div>
                   ))
                 )}
               </div>
@@ -601,6 +891,22 @@ export default function DynamicProjectWorkspace() {
           );
         })}
       </div>
+      <TaskDetailsDialog
+        taskId={selectedTaskId}
+        onClose={() => setSelectedTaskId(null)}
+        onUpdated={(updated) => setTasks((current) => current.map((task) =>
+          task.id === updated.id ? { ...task, ...updated } : task
+        ))}
+        onDeleted={(taskId) => setTasks((current) => current.filter((task) => task.id !== taskId))}
+        onCommentAdded={(taskId) => setTasks((current) => current.map((task) =>
+          task.id === taskId
+            ? { ...task, _count: { comments: (task._count?.comments || 0) + 1 } }
+            : task
+        ))}
+        people={people}
+        canEdit={canEditTasks}
+        canDelete={canDeleteTasks}
+      />
     </div>
   );
 }

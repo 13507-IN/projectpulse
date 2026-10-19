@@ -1,69 +1,31 @@
 import { Logo } from '@/components/icons';
+import Link from 'next/link';
 
 export function Footer() {
   return (
-    <footer className="bg-black border-t border-white/10 py-12 -mx-4 md:-mx-6 px-4 relative overflow-hidden">
-      <div className="container mx-auto relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div className="col-span-1 md:col-span-2">
-            <Logo className="mb-4 h-8 w-auto text-white" />
-            <p className="text-white/70 mb-4 max-w-md">
-              Empowering students to collaborate, innovate, and succeed with
-              AI-driven tools.
+    <footer className="border-t border-white/[0.08] bg-[#080a08] px-5 py-10 sm:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-md">
+            <Link href="/" aria-label="ProjectPulse home" className="inline-flex items-center gap-2.5">
+              <Logo className="h-8 w-8 text-lime-200" />
+              <span className="text-sm font-bold text-white">
+                Project<span className="text-lime-200">Pulse</span>
+              </span>
+            </Link>
+            <p className="mt-3 text-sm leading-6 text-white/45">
+              A place for students to find their people, build together, and turn good ideas into real projects.
             </p>
           </div>
-          <div>
-            <h3 className="font-semibold text-white mb-4">Product</h3>
-            <ul className="space-y-2 text-white/70">
-              <li>
-                <a
-                  href="/team-match"
-                  className="hover:text-white transition-colors"
-                >
-                  AI Teammate Matching
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/project/1"
-                  className="hover:text-white transition-colors"
-                >
-                  Project Workspace
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/analytics"
-                  className="hover:text-white transition-colors"
-                >
-                  Analytics
-                </a>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="font-semibold text-white mb-4">Company</h3>
-            <ul className="space-y-2 text-white/70">
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  About
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  Blog
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-white transition-colors">
-                  Contact
-                </a>
-              </li>
-            </ul>
-          </div>
+          <nav aria-label="Footer navigation" className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/55">
+            <Link href="/discover" className="transition hover:text-white">Discover projects</Link>
+            <Link href="/team-match" className="transition hover:text-white">Find teammates</Link>
+            <Link href="/docs" className="transition hover:text-white">Help &amp; docs</Link>
+            <Link href="/signup" className="transition hover:text-white">Get started</Link>
+          </nav>
         </div>
-        <div className="border-t border-white/10 mt-8 pt-8 text-center text-white/50">
-          <p>&copy; 2024 ProjectPulse. All rights reserved.</p>
+        <div className="mt-8 border-t border-white/[0.08] pt-5 text-xs text-white/35">
+          <p>&copy; {new Date().getFullYear()} ProjectPulse. Built for people who make things.</p>
         </div>
       </div>
     </footer>

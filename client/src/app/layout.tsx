@@ -4,8 +4,12 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/context/auth-context';
 
 export const metadata: Metadata = {
-  title: 'ProjectPulse',
-  description: 'AI-driven student collaboration platform.',
+  title: {
+    default: 'ProjectPulse — Find your people. Build the thing.',
+    template: '%s | ProjectPulse',
+  },
+  description:
+    'Meet student collaborators nearby, discover projects worth building, and work together in one shared workspace.',
 };
 
 export default function RootLayout({

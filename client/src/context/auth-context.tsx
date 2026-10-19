@@ -62,6 +62,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           });
         } else {
           setUser(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+          }
         }
       } else if (response.status === 401) {
         setUser(null);
@@ -79,22 +82,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Check for OAuth callback token in URL
-    const params = new URLSearchParams(window.location.search);
-    const tokenFromUrl = params.get('token');
-    const loginStatus = params.get('login');
+    // OAuth token fragments are not sent to the server in requests or referrers.
+    const queryParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const tokenFromUrl = hashParams.get('token') || queryParams.get('token');
+    const loginStatus =
+      hashParams.get('auth') ||
+      queryParams.get('auth') ||
+      queryParams.get('login');
 
     if (tokenFromUrl && typeof window !== 'undefined') {
       localStorage.setItem('token', tokenFromUrl);
     }
 
     if (tokenFromUrl || loginStatus === 'success') {
-      // Clean up the URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      checkAuth();
-    } else {
-      checkAuth();
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('token');
+      cleanUrl.searchParams.delete('auth');
+      cleanUrl.searchParams.delete('login');
+      cleanUrl.hash = '';
+      window.history.replaceState(
+        {},
+        document.title,
+        `${cleanUrl.pathname}${cleanUrl.search}`
+      );
     }
+
+    void checkAuth();
   }, []);
 
   const login = async () => {

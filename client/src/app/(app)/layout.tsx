@@ -25,6 +25,7 @@ export default function AppLayout({
       textColor: '#fff',
       links: [
         { label: 'Dashboard', href: '/dashboard', ariaLabel: 'Dashboard' },
+        { label: 'Discover Projects', href: '/discover', ariaLabel: 'Discover projects to join' },
         {
           label: 'Team Match',
           href: '/team-match',
