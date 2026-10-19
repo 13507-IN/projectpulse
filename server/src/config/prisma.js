@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { buildDatabaseUrl } from './database-url.js';
 
 // Create a singleton instance of Prisma Client
 const globalForPrisma = globalThis;
@@ -8,7 +9,12 @@ const prisma = globalForPrisma.prisma || new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   datasources: {
     db: {
-      url: process.env.DATABASE_URL + (process.env.NODE_ENV === 'production' ? '?connection_limit=20' : '')
+      url: buildDatabaseUrl(
+        process.env.DATABASE_URL,
+        process.env.NODE_ENV === 'production' ||
+          process.env.RENDER === 'true' ||
+          Boolean(process.env.RENDER_SERVICE_ID)
+      )
     }
   }
 });

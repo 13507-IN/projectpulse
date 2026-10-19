@@ -26,5 +26,8 @@ yarn-error.log*
 *.swo
 
 # Prisma
-/prisma/migrations/
+!/prisma/migrations/
+/prisma/migrations/*
 !prisma/migrations/.gitkeep
+!/prisma/migrations/20261017120000_project_discovery_applications/
+!/prisma/migrations/20261017120000_project_discovery_applications/migration.sql

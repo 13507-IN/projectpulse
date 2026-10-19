@@ -1,5 +1,14 @@
 import prisma from '../config/prisma.js';
 
+const normalizeStringList = (value) => {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .filter((item) => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean))]
+    .slice(0, 20);
+};
+
 // Get all projects for the current user
 export const getUserProjects = async (req, res) => {
   try {
@@ -56,11 +65,90 @@ export const getUserProjects = async (req, res) => {
   }
 };
 
+// Discoverable projects are opt-in; private workspaces are never returned here.
+export const discoverProjects = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { q, location, category, skills } = req.query;
+    const where = {
+      isDiscoverable: true,
+      status: 'active',
+      ownerId: { not: userId },
+      members: { none: { userId } },
+    };
+
+    if (typeof q === 'string' && q.trim()) {
+      const term = q.trim().slice(0, 100);
+      where.OR = [
+        { name: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
+        { category: { contains: term, mode: 'insensitive' } },
+        { tech: { has: term } },
+        { lookingFor: { has: term } },
+      ];
+    }
+    if (typeof location === 'string' && location.trim()) {
+      where.location = { contains: location.trim().slice(0, 100), mode: 'insensitive' };
+    }
+    if (typeof category === 'string' && category.trim()) {
+      where.category = { contains: category.trim().slice(0, 80), mode: 'insensitive' };
+    }
+    if (typeof skills === 'string' && skills.trim()) {
+      const skillList = normalizeStringList(skills.split(','));
+      if (skillList.length) where.lookingFor = { hasSome: skillList };
+    }
+
+    const projects = await prisma.project.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        tech: true,
+        location: true,
+        commitment: true,
+        lookingFor: true,
+        maxTeamSize: true,
+        createdAt: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            githubUsername: true,
+            avatarUrl: true,
+            role: true,
+            location: true,
+            bio: true,
+          },
+        },
+        _count: { select: { members: true } },
+        applications: {
+          where: { applicantId: userId },
+          select: { status: true },
+          take: 1,
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 60,
+    });
+
+    res.json(projects.map(({ applications, ...project }) => ({
+      ...project,
+      applicationStatus: applications[0]?.status || null,
+    })));
+  } catch (error) {
+    console.error('Error discovering projects:', error);
+    res.status(500).json({ error: 'Failed to discover projects' });
+  }
+};
+
 // Get a specific project
 export const getProject = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    const includeTasks = req.query.includeTasks !== 'false';
 
     const project = await prisma.project.findFirst({
       where: {
@@ -96,21 +184,23 @@ export const getProject = async (req, res) => {
             },
           },
         },
-        tasks: {
-          include: {
-            assignee: {
-              select: {
-                id: true,
-                name: true,
-                githubUsername: true,
-                avatarUrl: true,
+        ...(includeTasks && {
+          tasks: {
+            include: {
+              assignee: {
+                select: {
+                  id: true,
+                  name: true,
+                  githubUsername: true,
+                  avatarUrl: true,
+                },
               },
             },
+            orderBy: {
+              createdAt: 'desc',
+            },
           },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        },
+        }),
       },
     });
 
@@ -140,17 +230,25 @@ export const createProject = async (req, res) => {
       tech,
       category,
       startDate,
+      isDiscoverable,
+      location,
+      commitment,
+      lookingFor,
+      maxTeamSize,
     } = req.body;
 
     // Validate required fields
-    if (!name) {
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Project name is required' });
+    }
+    if (maxTeamSize != null && (!Number.isInteger(maxTeamSize) || maxTeamSize < 2 || maxTeamSize > 100)) {
+      return res.status(400).json({ error: 'maxTeamSize must be between 2 and 100' });
     }
 
     const project = await prisma.project.create({
       data: {
-        name,
-        description,
+        name: name.trim().slice(0, 120),
+        description: typeof description === 'string' ? description.trim().slice(0, 5000) : undefined,
         githubRepoId,
         githubRepoUrl,
         githubRepoName,
@@ -159,6 +257,11 @@ export const createProject = async (req, res) => {
         tech: tech || [],
         category,
         startDate: startDate ? new Date(startDate) : null,
+        isDiscoverable: isDiscoverable === true,
+        location: typeof location === 'string' ? location.trim().slice(0, 120) || null : null,
+        commitment: typeof commitment === 'string' ? commitment.trim().slice(0, 80) || null : null,
+        lookingFor: normalizeStringList(lookingFor),
+        maxTeamSize: maxTeamSize ?? null,
         ownerId: userId,
       },
       include: {
@@ -204,7 +307,16 @@ export const updateProject = async (req, res) => {
       category,
       startDate,
       endDate,
+      isDiscoverable,
+      location,
+      commitment,
+      lookingFor,
+      maxTeamSize,
     } = req.body;
+
+    if (maxTeamSize != null && (!Number.isInteger(maxTeamSize) || maxTeamSize < 2 || maxTeamSize > 100)) {
+      return res.status(400).json({ error: 'maxTeamSize must be between 2 and 100' });
+    }
 
     // Check if user owns the project
     const project = await prisma.project.findFirst({
@@ -229,6 +341,11 @@ export const updateProject = async (req, res) => {
         category,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
+        isDiscoverable,
+        location: typeof location === 'string' ? location.trim().slice(0, 120) || null : location,
+        commitment: typeof commitment === 'string' ? commitment.trim().slice(0, 80) || null : commitment,
+        lookingFor: lookingFor === undefined ? undefined : normalizeStringList(lookingFor),
+        maxTeamSize,
       },
       include: {
         owner: {

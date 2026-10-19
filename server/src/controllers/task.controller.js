@@ -1,5 +1,63 @@
 import prisma from '../config/prisma.js';
 
+const statusByColumn = {
+  'To Do': 'todo',
+  'In Progress': 'in_progress',
+  Done: 'done',
+};
+const columnByStatus = {
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  done: 'Done',
+};
+const writableRoles = ['owner', 'admin', 'member'];
+const managerRoles = ['owner', 'admin'];
+
+const projectAccess = (userId, roles = writableRoles) => ({
+  OR: [
+    { ownerId: userId },
+    { members: { some: { userId, role: { in: roles } } } },
+  ],
+});
+
+const taskStateFromBody = (body, fallbackStatus = 'todo') => {
+  const { status, column } = body;
+  if (status === undefined && column === undefined) return null;
+  if (status !== undefined && !Object.hasOwn(columnByStatus, status)) {
+    return { error: 'Invalid task status' };
+  }
+  if (column !== undefined && !Object.hasOwn(statusByColumn, column)) {
+    return { error: 'Invalid task column' };
+  }
+  if (status !== undefined && column !== undefined && statusByColumn[column] !== status) {
+    return { error: 'Task status and column must match' };
+  }
+  const resolvedStatus = status ?? statusByColumn[column] ?? fallbackStatus;
+  return { status: resolvedStatus, column: columnByStatus[resolvedStatus] };
+};
+
+const parseDueDate = (value) => {
+  if (value === null || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const validAssignee = async (project, assigneeId, db = prisma) => {
+  if (!assigneeId) return true;
+  if (assigneeId === project.ownerId) return true;
+  const membership = await db.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId: project.id,
+        userId: assigneeId,
+      },
+    },
+    select: { role: true },
+  });
+  return Boolean(membership && writableRoles.includes(membership.role));
+};
+
 // Get all tasks for a project
 export const getProjectTasks = async (req, res) => {
   try {
@@ -170,9 +228,29 @@ export const createTask = async (req, res) => {
       dueDate,
     } = req.body;
 
-    // Validate required fields
-    if (!title) {
+    if (typeof title !== 'string' || !title.trim() || title.trim().length > 200) {
       return res.status(400).json({ error: 'Title is required' });
+    }
+    if (description !== undefined && (typeof description !== 'string' || description.length > 5000)) {
+      return res.status(400).json({ error: 'Description must be 5000 characters or less' });
+    }
+    if (priority !== undefined && !['low', 'medium', 'high'].includes(priority)) {
+      return res.status(400).json({ error: 'Invalid priority' });
+    }
+    if (type !== undefined && !['feature', 'bug', 'docs', 'improvement'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid task type' });
+    }
+    const taskState = taskStateFromBody({ status: status ?? undefined, column: column ?? undefined }) || {
+      status: 'todo',
+      column: 'To Do',
+    };
+    if (taskState.error) return res.status(400).json({ error: taskState.error });
+    const parsedDueDate = dueDate === undefined ? null : parseDueDate(dueDate);
+    if (parsedDueDate === undefined) {
+      return res.status(400).json({ error: 'Invalid due date' });
+    }
+    if (assigneeId !== undefined && assigneeId !== null && typeof assigneeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid assignee' });
     }
 
     let targetProjectId = projectId;
@@ -182,7 +260,7 @@ export const createTask = async (req, res) => {
         where: {
           OR: [
             { ownerId: userId },
-            { members: { some: { userId } } },
+            { members: { some: { userId, role: { in: writableRoles } } } },
           ],
         },
       });
@@ -206,28 +284,30 @@ export const createTask = async (req, res) => {
     const project = await prisma.project.findFirst({
       where: {
         id: targetProjectId,
-        OR: [
-          { ownerId: userId },
-          { members: { some: { userId } } },
-        ],
+        ...projectAccess(userId),
       },
+      select: { id: true, ownerId: true },
     });
 
     if (!project) {
       return res.status(404).json({ error: 'Project not found or unauthorized' });
     }
+    if (!await validAssignee(project, assigneeId)) {
+      return res.status(400).json({ error: 'Assignee must be a project teammate' });
+    }
 
     const task = await prisma.task.create({
       data: {
         projectId: targetProjectId,
-        title,
-        description,
-        status: status || 'todo',
+        title: title.trim(),
+        description: description?.trim() || null,
+        status: taskState.status,
         priority: priority || 'medium',
         type: type || 'feature',
-        column: column || 'To Do',
-        assigneeId,
-        dueDate: dueDate ? new Date(dueDate) : null,
+        column: taskState.column,
+        assigneeId: assigneeId || null,
+        dueDate: parsedDueDate,
+        completedAt: taskState.status === 'done' ? new Date() : null,
       },
       include: {
         assignee: {
@@ -245,7 +325,7 @@ export const createTask = async (req, res) => {
     await prisma.activity.create({
       data: {
         type: 'task_created',
-        description: `Created task "${title}"`,
+        description: `Created task "${task.title}"`,
         projectId: targetProjectId,
         taskId: task.id,
         userId,
@@ -253,14 +333,14 @@ export const createTask = async (req, res) => {
     });
 
     // Create notification for assignee if different from creator
-    if (assigneeId && assigneeId !== userId) {
+    if (task.assigneeId && task.assigneeId !== userId) {
       await prisma.notification.create({
         data: {
           type: 'task_assigned',
           title: 'New Task Assigned',
-          message: `You have been assigned to task "${title}"`,
+          message: `You have been assigned to task "${task.title}"`,
           link: `/project/${targetProjectId}`,
-          userId: assigneeId,
+          userId: task.assigneeId,
         },
       });
     }
@@ -273,7 +353,7 @@ export const createTask = async (req, res) => {
 };
 
 // Update a task
-export const updateTask = async (req, res) => {
+export const createUpdateTaskHandler = (db) => async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -286,22 +366,38 @@ export const updateTask = async (req, res) => {
       column,
       assigneeId,
       dueDate,
-      completedAt,
     } = req.body;
 
-    // Verify user has access to the task's project
-    const task = await prisma.task.findFirst({
+    if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.trim().length > 200)) {
+      return res.status(400).json({ error: 'Title must be between 1 and 200 characters' });
+    }
+    if (description !== undefined && description !== null &&
+        (typeof description !== 'string' || description.length > 5000)) {
+      return res.status(400).json({ error: 'Description must be 5000 characters or less' });
+    }
+    if (priority !== undefined && !['low', 'medium', 'high'].includes(priority)) {
+      return res.status(400).json({ error: 'Invalid priority' });
+    }
+    if (type !== undefined && !['feature', 'bug', 'docs', 'improvement'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid task type' });
+    }
+    if (assigneeId !== undefined && assigneeId !== null && typeof assigneeId !== 'string') {
+      return res.status(400).json({ error: 'Invalid assignee' });
+    }
+    const taskState = taskStateFromBody(req.body);
+    if (taskState?.error) return res.status(400).json({ error: taskState.error });
+    const parsedDueDate = dueDate === undefined ? undefined : parseDueDate(dueDate);
+    if (dueDate !== undefined && parsedDueDate === undefined) {
+      return res.status(400).json({ error: 'Invalid due date' });
+    }
+
+    const task = await db.task.findFirst({
       where: {
         id,
-        project: {
-          OR: [
-            { ownerId: userId },
-            { members: { some: { userId } } },
-          ],
-        },
+        project: projectAccess(userId),
       },
       include: {
-        project: true,
+        project: { select: { id: true, ownerId: true } },
       },
     });
 
@@ -309,25 +405,28 @@ export const updateTask = async (req, res) => {
       return res.status(404).json({ error: 'Task not found or unauthorized' });
     }
 
-    const updateData = {
-      title,
-      description,
-      status,
-      priority,
-      type,
-      column,
-      assigneeId,
-      dueDate: dueDate ? new Date(dueDate) : undefined,
-    };
-
-    // If status is being changed to 'done', set completedAt
-    if (status === 'done' && task.status !== 'done') {
-      updateData.completedAt = new Date();
-    } else if (status !== 'done' && task.status === 'done') {
-      updateData.completedAt = null;
+    if (assigneeId !== undefined && !await validAssignee(task.project, assigneeId, db)) {
+      return res.status(400).json({ error: 'Assignee must be a project teammate' });
     }
 
-    const updatedTask = await prisma.task.update({
+    const updateData = {};
+    if (title !== undefined) updateData.title = title.trim();
+    if (description !== undefined) updateData.description = description?.trim() || null;
+    if (priority !== undefined) updateData.priority = priority;
+    if (type !== undefined) updateData.type = type;
+    if (assigneeId !== undefined) updateData.assigneeId = assigneeId || null;
+    if (dueDate !== undefined) updateData.dueDate = parsedDueDate;
+    if (taskState) {
+      updateData.status = taskState.status;
+      updateData.column = taskState.column;
+      if (taskState.status === 'done' && task.status !== 'done') {
+        updateData.completedAt = new Date();
+      } else if (taskState.status !== 'done' && task.status === 'done') {
+        updateData.completedAt = null;
+      }
+    }
+
+    const updatedTask = await db.task.update({
       where: { id },
       data: updateData,
       include: {
@@ -343,7 +442,7 @@ export const updateTask = async (req, res) => {
     });
 
     // Create activity log
-    await prisma.activity.create({
+    await db.activity.create({
       data: {
         type: 'task_updated',
         description: `Updated task "${updatedTask.title}"`,
@@ -357,14 +456,14 @@ export const updateTask = async (req, res) => {
     });
 
     // If assignee changed, notify new assignee
-    if (assigneeId && assigneeId !== task.assigneeId && assigneeId !== userId) {
-      await prisma.notification.create({
+    if (updatedTask.assigneeId && updatedTask.assigneeId !== task.assigneeId && updatedTask.assigneeId !== userId) {
+      await db.notification.create({
         data: {
           type: 'task_assigned',
           title: 'Task Assigned',
           message: `You have been assigned to task "${updatedTask.title}"`,
           link: `/project/${task.projectId}`,
-          userId: assigneeId,
+          userId: updatedTask.assigneeId,
         },
       });
     }
@@ -376,22 +475,19 @@ export const updateTask = async (req, res) => {
   }
 };
 
+export const updateTask = createUpdateTaskHandler(prisma);
+
 // Delete a task
 export const deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Verify user has access to the task's project
+    // Only project owners and project admins can remove shared work.
     const task = await prisma.task.findFirst({
       where: {
         id,
-        project: {
-          OR: [
-            { ownerId: userId },
-            { members: { some: { userId } } },
-          ],
-        },
+        project: projectAccess(userId, managerRoles),
       },
     });
 
@@ -427,20 +523,15 @@ export const addTaskComment = async (req, res) => {
     const { content } = req.body;
     const userId = req.user.id;
 
-    if (!content) {
-      return res.status(400).json({ error: 'Comment content is required' });
+    if (typeof content !== 'string' || !content.trim() || content.trim().length > 3000) {
+      return res.status(400).json({ error: 'Comment must be between 1 and 3000 characters' });
     }
 
-    // Verify user has access to the task's project
+    // Viewers can read the discussion but cannot post.
     const task = await prisma.task.findFirst({
       where: {
         id,
-        project: {
-          OR: [
-            { ownerId: userId },
-            { members: { some: { userId } } },
-          ],
-        },
+        project: projectAccess(userId),
       },
     });
 
@@ -450,7 +541,7 @@ export const addTaskComment = async (req, res) => {
 
     const comment = await prisma.comment.create({
       data: {
-        content,
+        content: content.trim(),
         taskId: id,
         userId,
       },

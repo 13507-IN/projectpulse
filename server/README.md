@@ -261,9 +261,13 @@ npx prisma db seed
 ```env
 NODE_ENV=production
 DATABASE_URL=your_production_database_url
-SESSION_SECRET=strong-random-secret
-REDIS_URL=your_redis_url (optional, for session store)
+SESSION_SECRET=replace_with_a_random_secret_at_least_32_chars
+REDIS_URL=redis://your_redis_host:6379
 ```
+
+Use a `SESSION_SECRET` with at least 32 characters. If `REDIS_URL` is set but
+Redis cannot be reached, the server exits instead of silently switching to
+temporary in-memory sessions.
 
 ### Deploy to Vercel/Railway/Render
 

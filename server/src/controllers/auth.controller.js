@@ -1,5 +1,6 @@
 import { getGitHubAccessToken, getGitHubUser } from "../utils/github.js";
 import prisma from '../config/prisma.js';
+import { consumeOAuthState, createOAuthState } from '../utils/oauth-state.js';
 
 // GitHub OAuth Login Initiator
 export const githubLogin = (req, res) => {
@@ -18,8 +19,8 @@ export const githubLogin = (req, res) => {
             });
         }
 
-        const state = Math.random().toString(36).substring(2);
-        req.session.oauthState = state;
+        const state = createOAuthState();
+        req.session.githubOAuthState = state;
         const scope = 'user:email repo';
         
         const params = new URLSearchParams({
@@ -36,11 +37,13 @@ export const githubLogin = (req, res) => {
             callbackUrl: process.env.GITHUB_CALLBACK_URL,
             hasClientId: !!process.env.GITHUB_CLIENT_ID,
             hasClientSecret: !!process.env.GITHUB_CLIENT_SECRET,
-            state: state.substring(0, 8) + '...'
         });
         
         req.session.save((err) => {
-            if (err) console.error('Session save error during OAuth init:', err);
+            if (err) {
+                console.error('Session save error during OAuth init:', err);
+                return res.status(503).json({ error: 'Could not start GitHub authentication' });
+            }
             res.redirect(githubAuthUrl);
         });
     } catch (error) {
@@ -54,6 +57,10 @@ export const githubCallback = async (req, res) => {
     const { code, state: stateFromGitHub, error: gitHubError, error_description } = req.query;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const loginErrorUrl = `${frontendUrl}/login?error=oauth_failed`;
+
+    if (!consumeOAuthState(req, 'github', stateFromGitHub)) {
+        return res.redirect(`${frontendUrl}/login?error=invalid_oauth_state`);
+    }
     
     if (gitHubError || !code) {
         console.error('❌ GitHub OAuth Error or missing code:', gitHubError);
@@ -114,22 +121,6 @@ export const githubCallback = async (req, res) => {
             if (err) console.error('Session save error:', err);
 
             const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-            
-            // Set 30-day persistent user cookie
-            res.cookie('user', JSON.stringify({
-                id: user.id,
-                login: user.githubUsername,
-                name: user.name,
-                email: user.email,
-                avatar_url: user.avatarUrl,
-                role: user.role
-            }), {
-                httpOnly: false,
-                sameSite: isProd ? 'none' : 'lax',
-                secure: isProd,
-                maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-                path: '/'
-            });
 
             // Set 30-day persistent token cookies
             res.cookie('token', accessToken, {
@@ -148,7 +139,7 @@ export const githubCallback = async (req, res) => {
                 maxAge: 30 * 24 * 60 * 60 * 1000
             });
 
-            const redirectUrl = `${frontendUrl}/dashboard?auth=success&token=${accessToken}`;
+            const redirectUrl = `${frontendUrl}/dashboard#auth=success&token=${encodeURIComponent(accessToken)}`;
             res.redirect(redirectUrl);
         });
     } catch (error) {
@@ -163,12 +154,16 @@ export const googleLogin = (req, res) => {
         const clientId = process.env.GOOGLE_CLIENT_ID;
         const redirectUri = process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/auth/google/callback`;
 
-        const state = Math.random().toString(36).substring(2);
-        req.session.oauthState = state;
+        if (!clientId || !process.env.GOOGLE_CLIENT_SECRET) {
+            return res.status(500).json({ error: 'Google authentication is not configured' });
+        }
+
+        const state = createOAuthState();
+        req.session.googleOAuthState = state;
 
         const scope = 'openid email profile';
         const params = new URLSearchParams({
-            client_id: clientId || 'GOOGLE_CLIENT_ID_PLACEHOLDER',
+            client_id: clientId,
             redirect_uri: redirectUri,
             response_type: 'code',
             scope: scope,
@@ -181,7 +176,10 @@ export const googleLogin = (req, res) => {
         console.log('🔑 Initiating Google OAuth flow with redirect URI:', redirectUri);
 
         req.session.save((err) => {
-            if (err) console.error('Session save error during Google OAuth init:', err);
+            if (err) {
+                console.error('Session save error during Google OAuth init:', err);
+                return res.status(503).json({ error: 'Could not start Google authentication' });
+            }
             res.redirect(googleAuthUrl);
         });
     } catch (error) {
@@ -195,6 +193,10 @@ export const googleCallback = async (req, res) => {
     const { code, state: stateFromGoogle, error: googleError } = req.query;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const redirectUri = process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:4000'}/api/auth/google/callback`;
+
+    if (!consumeOAuthState(req, 'google', stateFromGoogle)) {
+        return res.redirect(`${frontendUrl}/login?error=invalid_oauth_state`);
+    }
 
     if (googleError || !code) {
         console.error('❌ Google OAuth Error or missing code:', googleError);
@@ -278,20 +280,6 @@ export const googleCallback = async (req, res) => {
             if (err) console.error('Session save error:', err);
 
             const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-            
-            res.cookie('user', JSON.stringify({
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                avatar_url: user.avatarUrl,
-                role: user.role
-            }), {
-                httpOnly: false,
-                sameSite: isProd ? 'none' : 'lax',
-                secure: isProd,
-                maxAge: 30 * 24 * 60 * 60 * 1000,
-                path: '/'
-            });
 
             res.cookie('token', accessToken, {
                 httpOnly: true,
@@ -301,7 +289,7 @@ export const googleCallback = async (req, res) => {
                 maxAge: 30 * 24 * 60 * 60 * 1000
             });
 
-            const redirectUrl = `${frontendUrl}/dashboard?auth=success&token=${accessToken}`;
+            const redirectUrl = `${frontendUrl}/dashboard#auth=success&token=${encodeURIComponent(accessToken)}`;
             res.redirect(redirectUrl);
         });
     } catch (error) {
@@ -405,14 +393,6 @@ export const getUser = async (req, res) => {
                     }
                 });
             }
-        }
-
-        // Fallback to client-side user cookie if present
-        const userCookie = req.cookies?.user;
-        if (userCookie) {
-            try {
-                return res.json({ user: JSON.parse(userCookie) });
-            } catch (e) {}
         }
 
         res.json({ user: null, authenticated: false });

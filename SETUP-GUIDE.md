@@ -123,18 +123,18 @@ Opens database GUI at `http://localhost:5555`
 
 ## 🔧 Environment Variables Reference
 
-### Server `.env` (Already Configured)
+### Server `.env` (copy these placeholders into your local environment)
 ```env
 # GitHub OAuth
 GITHUB_CLIENT_ID=Ov23liR1G3ITDiY2HiGL
-GITHUB_CLIENT_SECRET=087c1c8f2eeebf348fd73fce755afb933f2a9ebf
+GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 GITHUB_CALLBACK_URL=http://localhost:4000/api/auth/github/callback
 
 # Database
-DATABASE_URL=postgresql://neondb_owner:npg_btFSw0Nq7eQu@ep-orange-wind-a1qiydf1-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
 
 # Pinecone AI (Configured)
-PINECONE_API_KEY=pcsk_2d9VzJ_Nbe56gpFvq23PnCRw2xNkVbu5eKcGBUv6NJw8rE5BhawnayBYVHvGoWidroERvV
+PINECONE_API_KEY=your_pinecone_api_key
 PINECONE_ENV=asia-southeast1-gcp
 PINECONE_INDEX=project-pulse
 PINECONE_EMBEDDING=true

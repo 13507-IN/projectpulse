@@ -28,7 +28,8 @@ export const authenticateToken = async (req, res, next) => {
             }
         }
 
-        // 2. Token extraction from Bearer header, cookies, or query params
+        // 2. Token extraction from the Authorization header or HTTP-only cookies.
+        // Never authenticate from the browser-writable `user` profile cookie.
         const authHeader = req.headers.authorization;
         let token = null;
 
@@ -36,26 +37,6 @@ export const authenticateToken = async (req, res, next) => {
             token = authHeader.substring(7);
         } else if (req.cookies && (req.cookies.token || req.cookies.github_token)) {
             token = req.cookies.token || req.cookies.github_token;
-        } else if (req.query && req.query.token) {
-            token = req.query.token;
-        }
-
-        // 3. Fallback: Lookup user from non-httpOnly user cookie if token is missing
-        if (!token && req.cookies && req.cookies.user) {
-            try {
-                const cookieUserData = JSON.parse(req.cookies.user);
-                if (cookieUserData && cookieUserData.id) {
-                    const dbUser = await prisma.user.findUnique({
-                        where: { id: cookieUserData.id }
-                    });
-                    if (dbUser) {
-                        if (req.session) req.session.userId = dbUser.id;
-                        req.user = dbUser;
-                        req.token = dbUser.githubAccessToken;
-                        return next();
-                    }
-                }
-            } catch (e) {}
         }
 
         if (!token) {
